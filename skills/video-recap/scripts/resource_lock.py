@@ -66,6 +66,9 @@ def _assembly_entries(work_dir: Path) -> list[dict]:
     bgm = (settings.get("audio_mix") or {}).get("bgm_path")
     if bgm:
         entries.append(_file_entry("bgm", bgm))
+    packaging = (settings.get("video_filters") or {}).get("packaging_layers") or {}
+    for layer in packaging.get("layers", []):
+        entries.append(_file_entry("packaging_layer", layer.get("path"), {"name": layer.get("name")}))
     style = settings.get("subtitle_style")
     if isinstance(style, dict):
         entries.append(_file_entry("subtitle_font", style.get("font_file"),
@@ -83,7 +86,8 @@ def _match_library(entries: list[dict], index: dict) -> None:
                for r in index["resources"]}
     for entry in entries:
         resource = by_path.get(entry["path"]) if entry["path"] else None
-        if resource is None and entry["role"] == "voice" and not entry["path"]:
+        if (resource is None and entry["role"] == "voice" and not entry["path"]
+                and isinstance(entry["detail"].get("voice_id"), str) and entry["detail"]["voice_id"]):
             detail = entry["detail"]
             resource = next((v for v in voices
                              if (records[v["id"]].get("voice") or {}).get("provider") == detail.get("provider")

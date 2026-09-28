@@ -71,6 +71,7 @@ python3 scripts/library.py --library-dir <library> show <id|id@vN>
   "params": {
     "font": {"family": "Arial"},
     "size_px": {"value": 52, "provenance": "specified"},
+    "max_chars": {"value": 15, "provenance": "measured"},
     "band": {"value": {"y_top": 1280, "y_bot": 1440}, "provenance": "measured"}
   },
   "samples": ["demo-sample"],
@@ -83,7 +84,8 @@ python3 scripts/library.py --library-dir <library> show <id|id@vN>
 - 任何带 `provenance` 的参数都要有 `value`，`provenance` ∈ `measured`（从成片实测）/ `fitted`（反复调出来的）/
   `specified`（人直接给的数值）/ `unknown`。编辑器面板上的读数不是像素，按 `specified` 或 `unknown` 记。
 - 引用资源写 `{"resource": "<id>"}`：`params.font` 必须指向 `font` 资源，图层的 `image` 必须指向 `image` 资源。
-- `subtitle_style` 需要 `params.font`（`resource` 或 `family`）与 `params.size_px`；`params.band.value` 若给出，需满足
+- `subtitle_style` 需要 `params.font`（`resource` 或 `family`）、`params.size_px` 与 `params.max_chars`（每行最多字数，用最长一行在这块画布上校准）；
+  `size_px × max_chars` 超过画布宽减去两侧各 40px 默认边距时报错。可选 `outline_px`、`shadow_px`、`primary_color`、`outline_color`、`max_lines`、`band`，其他参数名报错；`params.band.value` 若给出，需满足
   `0 <= y_top < y_bot <= canvas.height`。
 - `packaging` 需要非空 `params.layers`，每层有唯一 `name`、`image` 引用与画布内的整数 `rect {x, y, width, height}`；
   可选 `params.safe_rect`。
@@ -114,6 +116,32 @@ python3 scripts/library.py --library-dir <library> show <id|id@vN>
 
 样片是证据，不是模板：`demonstrates` 写它示范了什么，`not_reusable` 写不能照搬什么（人物、字幕内容、时间码……）。
 `templates` 用 `id@vN` 指回它所示范的模板版本。
+
+## 项目绑定 `recap_project.json`
+
+```json
+{
+  "schema": "video-recap.project.v1",
+  "name": "某系列竖屏解说",
+  "library": "../video-library",
+  "bindings": {"subtitle_style": "clean-white@v1", "voice": "narrator-demo", "bgm": "pulse-demo"}
+}
+```
+
+`python3 scripts/recap.py <video> --project <recap_project.json 或所在目录> …` 在任何阶段开始前解析绑定：`library` 相对项目文件；
+模板必须是 `adopted`；资源与模板必须通过 `check`。解析结果只以各阶段已有的设置下发，阶段技能不读资源库：
+
+| 绑定 | 下发为 |
+|---|---|
+| `subtitle_style` | `SUBTITLE_PLAY_RES_X/Y` = 模板画布，`SUBTITLE_FONT_SIZE` ← `size_px`，`SUBTITLE_OUTLINE` ← `outline_px`，`SUBTITLE_SHADOW` ← `shadow_px`，`SUBTITLE_PRIMARY_COLOR` / `SUBTITLE_OUTLINE_COLOR`（ASS `&HAABBGGRR`），`SUBTITLE_MAX_CHARS` / `SUBTITLE_MAX_LINES`；`band` → 底对齐 `SUBTITLE_ALIGNMENT=2` 且 `SUBTITLE_MARGIN_V` = 画布高 − `y_bot`；`font.family` → `SUBTITLE_FONT_NAME`，字体资源 → 再加 `SUBTITLE_FONT_FILE` |
+| `voice` | provider → `--tts-provider`；MiMo 预置音色 → `--mimo-tts-voice`，参考音频 → `--voice-ref`；Fish Audio → `FISH_TTS_REFERENCE_ID`；index-tts → `INDEX_TTS_VOICE` |
+| `bgm` | `BGM_PATH` ← 该资源的第一个文件 |
+| `packaging` | 合成前写出 `work_dir/packaging_layers.json`：每个图层的图片资源第一个文件 + `rect`，由 video-assemble 叠加到成片并写进 `timeline.json` 的 image 轨 |
+
+- 你已经显式设置的参数或环境变量与绑定不一致时，运行在开始前停止并指出是哪一项，不会静默覆盖。
+- 合成前核对模板画布与实际成片画布；不一致即停止——换画幅要用另一个模板。
+- 参考音频的 `consent.status` 为 `denied` 时拒绝绑定；dub 模式与本地采用三件套不接受 `--project`。
+- 续跑命令只带 `--project`，不重复写出由绑定得到的值，改了绑定后续跑会按新绑定解析。
 
 ## 运行记录
 
