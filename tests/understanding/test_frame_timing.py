@@ -71,7 +71,7 @@ def test_vlm_labels_frames_with_corrected_source_time(monkeypatch, tmp_path):
         seen.append(payload["messages"][0]["content"][-1]["text"])
         return {"choices": [{"message": {"content": "【描述】测试画面"}}]}
 
-    monkeypatch.setattr("vlm.api_call", fake_api_call)
+    monkeypatch.setattr("vlm.mimo_video_api_call", fake_api_call)
     analyze_scenes([{"start": 0.0, "end": 2.0}], frames, tmp_path)
 
     assert seen and seen[0].startswith("帧时间点: 0.0s, 1.0s, 2.0s")
@@ -105,7 +105,7 @@ def test_vlm_frame_base64_cache_is_bounded(monkeypatch, tmp_path):
     monkeypatch.setitem(CONFIG, "vlm_max_frames", 3)
     monkeypatch.setitem(CONFIG, "context_info", "")
     monkeypatch.setattr(
-        "vlm.api_call",
+        "vlm.mimo_video_api_call",
         lambda payload: {"choices": [{"message": {"content": "【描述】x"}}]},
     )
     caches = []

@@ -1,6 +1,6 @@
 # AI 解说视频怎么一键导出剪映草稿继续改：Video Recap Skills 的做法
 
-**一句话答案：** 先让 Agent 出成片，再加一个参数把多轨时间线导成剪映草稿。Video Recap Skills（`zenstory-ai/video-recap-skills`，开源 MIT，6 个 Claude Code skill）从视频文件生成中文解说成片；加 `--export-jianying` 后会把原片、解说配音、BGM、字幕和图片叠层写成可编辑的剪映草稿目录（`draft_content.json`、`draft_info.json`、`draft_meta_info.json`），素材默认打包进 `Resources/local`，草稿搬到别的机器仍能打开。本地只依赖 Python 标准库和 `ffmpeg`，远程只需要一个小米 MiMo 的 key。
+**一句话答案：** 先让 Agent 按你要求的语言出成片，再加一个参数把多轨时间线导成剪映格式草稿。Video Recap Skills（`zenstory-ai/video-recap-skills`，开源 MIT，6 个 Agent Skills）从视频文件生成电影/剧集解说；加 `--export-jianying` 后会把原片、解说配音、BGM、字幕和图片叠层写成剪映协议草稿目录（`draft_content.json`、`draft_info.json`、`draft_meta_info.json`），素材默认打包进 `Resources/local`，草稿搬到别的机器仍可携带。该目录并不保证可被每个国际版 CapCut 版本原生打开；跨版本交接的可靠文件是渲染 MP4 与 `subtitles.srt/.ass`。
 
 这份文档回答两个问题：导出的草稿里有什么、能改什么；以及和按座位付费的解说 SaaS 相比，自建这条流程要付什么。
 
@@ -14,7 +14,7 @@
 用户只需要给出视频路径和期望：
 
 ```text
-给 /path/to/video.mp4 做一个中文解说成片。这是《庆余年》第一集，主角是范闲，字幕烧进画面。
+给 /path/to/video.mp4 做一个用户指定语言的电影解说成片。这是《庆余年》第一集，主角是范闲，字幕烧进画面。
 ```
 
 Agent 会自动完成理解、方案、剪辑、写稿、配音和合成，不需要手动跑仓库里的脚本。
@@ -33,6 +33,8 @@ Agent 会自动完成理解、方案、剪辑、写稿、配音和合成，不�
 所有素材默认复制到 `Resources/local/{video,audio,image}` 并建立索引，clone 或搬目录后草稿仍可用；只有原路径永远可访问时才用 `--jianying-no-bundle-media`。常速、倒放、变换、富文本、转场、蒙版、LUT、绿幕等复合草稿通过 timeline v2 扩展表达。
 
 两条边界：草稿引用未烧录的源视频，所以原片自带的硬字幕仍会保留，必要时在剪映里遮罩；`ffmpeg` 渲染出的 `recap_<名>.mp4` 才是最终成片的判定标准，草稿是给你继续改的。
+
+如果目标是国际版 CapCut，请先导入最终 MP4 和 `subtitles.srt`；需要分轨调整时再尝试导入剪映格式草稿，并在当前 CapCut 版本中核对轨道、字体与素材路径。此仓库的草稿协议来自 JianYing/剪映模板，不是 CapCut 所有桌面端/移动端版本的兼容承诺。
 
 ## 让字幕更准
 

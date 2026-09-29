@@ -284,17 +284,15 @@ def test_calibrated_line_not_subject_to_density_guard(monkeypatch, tmp_path):
 
 # --- Q7: 破折号 normalization -------------------------------------------------
 
-def test_normalize_subtitle_text_collapses_em_dashes():
-    # "——" → "，"; a lone "—" → "，"; never leaves a doubled comma
-    assert subtitle_core._normalize_subtitle_text("他来了——然后走了") == "他来了，然后走了"
-    assert subtitle_core._normalize_subtitle_text("等等—别走") == "等等，别走"
-    assert subtitle_core._normalize_subtitle_text("一———二") == "一，二"  # any dash run collapses to one comma
-    assert subtitle_core._normalize_subtitle_text("已经，——好") == "已经，好"  # no double comma
+def test_normalize_subtitle_text_collapses_repeated_em_dashes_without_translation():
+    assert subtitle_core._normalize_subtitle_text("他来了——然后走了") == "他来了—然后走了"
+    assert subtitle_core._normalize_subtitle_text("wait—don't go") == "wait—don't go"
+    assert subtitle_core._normalize_subtitle_text("一———二") == "一—二"
+    assert subtitle_core._normalize_subtitle_text("already,——well") == "already,—well"
     assert subtitle_core._normalize_subtitle_text("") == ""
 
 
-def test_generated_srt_and_ass_normalize_em_dashes(monkeypatch, tmp_path):
-    # narration text with a dash is normalized in BOTH generated srt and ass burned text
+def test_generated_srt_and_ass_preserve_language_neutral_em_dash(monkeypatch, tmp_path):
     segs = [{"actual_place_start": 1.0, "actual_place_end": 4.0,
              "narration": "我回来了——这一次", "spoken_text": "我回来了——这一次",
              "start": 1.0, "end": 4.0}]
@@ -302,13 +300,11 @@ def test_generated_srt_and_ass_normalize_em_dashes(monkeypatch, tmp_path):
     subtitle_render._generate_ass(segs, tmp_path, 4.0, {"width": 1280, "height": 720})
     srt = (tmp_path / "subtitles.srt").read_text(encoding="utf-8")
     ass = (tmp_path / "subtitles.ass").read_text(encoding="utf-8")
-    assert "——" not in srt and "—" not in srt
-    assert "——" not in ass and "—" not in ass
-    assert "我回来了，这一次" in srt
+    assert "——" not in srt and "我回来了—这一次" in srt
+    assert "——" not in ass and "我回来了—这一次" in ass
 
 
-def test_original_gap_text_normalizes_em_dashes(monkeypatch, tmp_path):
-    # the dash normalization also applies to original-gap subtitle text in the burned output
+def test_original_gap_text_preserves_language_neutral_em_dash(monkeypatch, tmp_path):
     _burn_on(monkeypatch)
     (tmp_path / "original_subtitles.json").write_text(
         json.dumps([{"start": 1.0, "end": 4.0, "text": "活着——让我看看"}]), encoding="utf-8")
@@ -316,8 +312,8 @@ def test_original_gap_text_normalizes_em_dashes(monkeypatch, tmp_path):
              "spoken_text": "解说", "start": 5.0, "end": 8.0}]
     subtitle_render._generate_ass(segs, tmp_path, 10.0, {"width": 1280, "height": 720})
     ass = (tmp_path / "subtitles.ass").read_text(encoding="utf-8")
-    assert "——" not in ass and "—" not in ass
-    assert "活着，让我看看" in ass
+    assert "——" not in ass
+    assert "活着—让我看看" in ass
 
 
 # --- R1: user-provided subtitle file as override primary ----------------------

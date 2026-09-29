@@ -10,6 +10,9 @@
     "ASR_CHUNK_MIN_CHARS": {
       "classification": "value"
     },
+    "ASR_PROVIDER": {
+      "classification": "value"
+    },
     "ASR_SEGMENT_SECONDS": {
       "classification": "value"
     },
@@ -53,6 +56,9 @@
       "classification": "value"
     },
     "EDIT_MODE": {
+      "classification": "value"
+    },
+    "EDGE_TTS_VOICE": {
       "classification": "value"
     },
     "EXPORT_JIANYING": {
@@ -399,6 +405,21 @@
     },
     "VOICE_REF": {
       "classification": "file_path"
+    },
+    "WHISPER_COMPUTE_TYPE": {
+      "classification": "value"
+    },
+    "WHISPER_DEVICE": {
+      "classification": "value"
+    },
+    "WHISPER_LANGUAGE": {
+      "classification": "value"
+    },
+    "WHISPER_MODEL_DIR": {
+      "classification": "file_path"
+    },
+    "WHISPER_VAD_FILTER": {
+      "classification": "value"
     },
     "ZONE_DUCKING_VOLUME": {
       "classification": "value"

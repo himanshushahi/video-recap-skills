@@ -7,7 +7,7 @@
 <h1 align="center">Video Recap Skills</h1>
 
 <p align="center">
-  <b>Turn one or several videos into a Chinese-narration recap: six skills inside the coding agent you already use, ffmpeg locally, one Xiaomi MiMo key remotely, and an optional JianYing/CapCut draft to keep editing by hand.</b>
+  <b>Turn one or several videos into an English, Hindi, or other requested-language movie explainer: six skills inside the coding agent you already use, ffmpeg locally, and an optional editable draft handoff.</b>
 </p>
 
 <p align="center">
@@ -40,17 +40,17 @@ The 59-second landscape recap above, *Guohuo (这一秒过火)*, is the final de
 
 ## What it is
 
-Six skills install into Claude Code, Codex CLI, OpenCode, or OpenClaw. You give the video paths and the recap you want in plain language; the agent understands picture and dialogue, decides the story and audiovisual plan, cuts, writes, voices, mixes, and subtitles. Supported inputs: `.mp4 / .mov / .mkv / .webm`.
+Six skills install into Claude Code, Codex CLI, Antigravity CLI (`agy`), OpenCode, or OpenClaw. Give the agent video paths, the language for narration/subtitles, and the recap you want in plain language; it understands picture and dialogue, plans the story and sound, cuts, writes, voices, mixes, and subtitles. Supported inputs: `.mp4 / .mov / .mkv / .webm`.
 
-- **One key, ffmpeg locally.** ASR, VLM, and TTS all go through [Xiaomi MiMo](https://platform.xiaomimimo.com); the local runtime is Python's standard library plus `ffmpeg`, with no GPU, no `pip install`, and no model downloads. Voiceover can switch to Fish Audio, which replaces only that stage.
+- **Provider choices without changing the workflow.** VLM/chat defaults to [Xiaomi MiMo](https://platform.xiaomimimo.com) and also accepts an OpenAI-compatible gateway. ASR prefers local faster-whisper when its configured model directory exists, otherwise it uses MiMo; narration defaults to MiMo and can switch to edge-tts or Fish Audio. `ffmpeg` runs locally. Whisper and edge-tts are optional installs; edge-tts needs an internet connection.
 - **The editorial decision comes before the sound allocation.** The agent compares edit hypotheses first, writes the viewer promise, POV, dramatic question, and change-based beats into `recap_story_plan.json`, then assigns each beat a picture job and an audio owner: narration is voiced as a block only when it has a defined job, and strong dialogue, action sound, or silence may own an entire beat.
 - **Cut first, narrate second, so the timeline is aligned by construction.** Cut mode renders the shortened video first and writes narration against that output timeline; feed several videos at once and pick ranges by `source_id` to cut one story spine; each video's analysis is saved to a filesystem material library for reuse.
-- **Keep editing after the render.** The multi-track `timeline.json` exports to a JianYing draft with editable source clips, narration, BGM, subtitles, and image overlays; drop in an accurate subtitle file and it becomes the preferred source for original-dialogue captions.
+- **Keep editing after the render.** The multi-track `timeline.json` can export to a JianYing-format draft with editable source clips, narration, BGM, subtitles, and image overlays. CapCut compatibility varies by app/version; the guaranteed handoff is the rendered MP4 plus `subtitles.srt/.ass`, which you can import into CapCut.
 - **Every step leaves a record you can check.** Narration lint, assembly QC, delivery QC, and the revision log are machine-readable files; the optional MiMo adviser only suggests, and a missing key, rate limit, or timeout never blocks the render.
 
 ## Install
 
-Prerequisites: Python 3.10 or newer, `ffmpeg` with libass on `PATH` (subtitles are burned in by default), and one [Xiaomi MiMo](https://platform.xiaomimimo.com) API key.
+Prerequisites: Python 3.10 or newer, `ffmpeg` with libass on `PATH` (subtitles are burned in by default), and an API key for the selected VLM/ASR/TTS services. For the default cloud setup, use a [Xiaomi MiMo](https://platform.xiaomimimo.com) API key.
 
 ```bash
 brew install ffmpeg                        # macOS; apt on Debian/Ubuntu, choco / scoop / winget on Windows
@@ -73,24 +73,117 @@ Or just ask (any agent that can import a GitHub repository):
 Install this plugin: https://github.com/zenstory-ai/video-recap-skills
 ```
 
+## Start with Antigravity or OpenCode
+
+Follow these steps from a terminal. You do not need to run the project's Python scripts yourself.
+
+### 1. Install the tools
+
+Install Python 3.10+, ffmpeg with libass, and either [Antigravity CLI](https://antigravity.google/docs/skills/) (`agy`) or [OpenCode](https://opencode.ai/docs/skills/). For narration in English or Hindi with Edge TTS, install the optional package into the Python environment used by the skills:
+
+```powershell
+py -m pip install edge-tts
+```
+
+### 2. Download the skills
+
+In PowerShell:
+
+```powershell
+git clone https://github.com/zenstory-ai/video-recap-skills.git
+cd video-recap-skills
+New-Item -ItemType Directory -Force .agents\skills | Out-Null
+Copy-Item skills\* .agents\skills -Recurse -Force
+```
+
+On macOS/Linux, the last two commands are:
+
+```bash
+mkdir -p .agents/skills
+cp -R skills/. .agents/skills/
+```
+
+This copies the six skills to the standard project discovery folder. If you pull updates to the repository later, repeat the copy step. Keep only one copy in an agent's discovery paths to avoid duplicate skill names.
+
+### 3. Configure an API
+
+For the local-proxy + Whisper + Edge TTS setup, install `faster-whisper` in the Python environment used by the agent and make sure your Whisper model directory contains `model.bin`. Then set these values in the same PowerShell terminal where you will start `agy` or OpenCode. Replace the Whisper path with your actual local model directory:
+
+```powershell
+$env:MIMO_API_KEY = "local-proxy-key"
+$env:MIMO_API_URL = "http://127.0.0.1:31415/v1"
+$env:MIMO_VIDEO_API_URL = "http://127.0.0.1:31415/v1"
+$env:MIMO_MODEL = "auto"
+$env:ASR_PROVIDER = "whisper-local"
+$env:WHISPER_MODEL_DIR = "C:\Models\whisper-large-v3-turbo"
+$env:WHISPER_LANGUAGE = "auto"
+$env:TTS_PROVIDER = "edge-tts"
+$env:EDGE_TTS_VOICE = "hi-IN-SwaraNeural"
+```
+
+`MIMO_API_URL` and `MIMO_VIDEO_API_URL` are base URLs; the client appends `/chat/completions`. The proxy must accept OpenAI-compatible chat completions with image input, and `MIMO_MODEL` must be a model name your proxy recognizes. The proxy key can be any non-empty value if the local server does not authenticate. ASR is explicitly local Whisper and TTS is explicitly Edge TTS here, so MiMo ASR/TTS model names and URLs are not used. Edge TTS is an online speech service and needs internet access. `WHISPER_LANGUAGE=auto` lets Whisper detect the source language; set a language code only when you want to force it.
+
+Whisper transcribes source audio; it does not generate the complete subtitle track by itself. The agent writes narration in your requested language, narration subtitles are generated from that script, and ASR/source-dialogue captions are used for original audio gaps when available and reviewed. For Hindi/Devanagari subtitles, inspect the rendered glyphs and set `SUBTITLE_FONT_NAME` or `SUBTITLE_FONT_FILE` if the default font lacks characters.
+
+If you prefer cloud-only MiMo instead, use a MiMo key and the built-in defaults: pay-as-you-go endpoint `https://api.xiaomimimo.com/v1`, VLM model `mimo-v2.5`, ASR model `mimo-v2.5-asr`, and TTS model `mimo-v2.5-tts`. Set `$env:ASR_PROVIDER = "mimo-asr"` and `$env:TTS_PROVIDER = "mimo-tts"` to force those cloud providers. Token Plan `tp-*` keys route automatically to the configured cluster (`MIMO_TOKEN_PLAN_CLUSTER`, default `cn`); do not set the pay-as-you-go URL for those keys. See the [configuration playbook](skills/video-recap/references/config-playbook.md) for per-stage URL overrides.
+
+Keep all real credentials in environment variables, not in project files.
+
+### 4. Start your agent
+
+From the repository folder, run one of:
+
+```powershell
+agy
+```
+
+or:
+
+```powershell
+opencode debug skill
+opencode
+```
+
+For OpenCode, `opencode debug skill` should list `video-recap`, `video-script`, `video-understanding`, `video-cut`, `video-voiceover`, and `video-assemble`. Antigravity discovers the same skills automatically; type `/video-recap` to invoke it directly. In OpenCode, ask for `video-recap` by name or let the agent select it from the available skills.
+
+### 5. Ask for the recap
+
+Give the agent the absolute video path, output language, subtitle preference, voice, and CapCut deliverables. For example:
+
+```text
+Use video-recap to make a Hindi movie explainer from D:\Movies\Movie.mp4.
+Write and narrate in natural Hindi, subtitle the narration in Hindi, and keep
+important original dialogue with captions in its original language. Use Edge
+TTS voice hi-IN-SwaraNeural. Burn in the narration subtitles and deliver the
+MP4 plus SRT so I can import them into CapCut.
+```
+
+English example:
+
+```text
+Use video-recap to make an English movie explainer from D:\Movies\Movie.mp4.
+Write and narrate in natural English, subtitle the narration in English, and
+keep important original dialogue with captions in its original language. Use
+Edge TTS voice en-US-AriaNeural. Burn in the narration subtitles and deliver
+the MP4 plus SRT so I can import them into CapCut.
+```
+
+You can request another language, accent, or voice by name. Edge TTS is online synthesis and needs internet access. For other narration providers, see the provider options below.
+
+### 6. Let the agent finish the staged workflow
+
+The recap is staged so the agent can inspect the video and make grounded edit decisions. It may first analyze the source or create a clip plan; the agent should then write the required plan/narration artifacts and continue by rerunning the same workflow. If it stops at a handoff, tell it: `Continue the video-recap workflow. Read the handoff instructions, create the required artifacts, and resume the same run until the MP4 and subtitles are produced. Do not ask me to run Python scripts.` Cut mode has an additional cut-first stage before narration is written.
+
+When complete, look for `recap_<name>.mp4` and `subtitles.srt` / `subtitles.ass` in the delivery/work directories. Import the MP4 and SRT into CapCut. The optional `--export-jianying` draft uses JianYing/剪映's project format; it is not guaranteed to open in every international CapCut version, so verify it in your installed app before relying on it. For Devanagari or other non-Latin subtitles, check that the rendered font has all required glyphs; configure `SUBTITLE_FONT_NAME` or `SUBTITLE_FONT_FILE` if needed.
+
 <details>
-<summary><strong>Codex CLI, OpenCode, OpenClaw</strong></summary>
+<summary><strong>Other agent installation paths: Codex CLI and OpenClaw</strong></summary>
 
 **Codex CLI**
 
 ```bash
 codex plugin marketplace add zenstory-ai/video-recap-skills
 codex plugin add video-recap-skills@video-recap
-```
-
-**OpenCode**: the [official Agent Skills documentation](https://opencode.ai/docs/skills/) puts project skills under `.opencode/skills/<name>/SKILL.md`. Clone the repository and start OpenCode from that directory:
-
-```bash
-git clone https://github.com/zenstory-ai/video-recap-skills.git
-cd video-recap-skills
-mkdir -p .opencode
-ln -s ../skills .opencode/skills             # on Windows, copy skills\* into .opencode\skills\
-opencode debug skill                         # should list all 6 skills
 ```
 
 **OpenClaw**: after cloning, import the Claude plugin bundle:
@@ -105,6 +198,49 @@ Register the checkout through one discovery path only; duplicates cause name col
 </details>
 
 <details>
+<summary><strong>Local VLM proxy and optional providers</strong></summary>
+
+### Local VLM proxy and optional providers
+
+Set provider variables in the same terminal session used to launch `agy` or `opencode`; the child process running the skills inherits them. Keep credentials in environment variables, not in the repository or generated project files.
+
+For a local OpenAI-compatible proxy, it must accept `POST /v1/chat/completions` with image inputs (`image_url` data URLs). Set the shared endpoint and the video endpoint; the latter is used for frame-by-frame VLM analysis. Use the model identifier expected by your proxy:
+
+```powershell
+$env:MIMO_API_KEY = "your-local-proxy-key"
+$env:MIMO_API_URL = "http://127.0.0.1:31415/v1"
+$env:MIMO_VIDEO_API_URL = "http://127.0.0.1:31415/v1"
+$env:MIMO_MODEL = "auto"
+agy
+```
+
+For OpenCode, launch `opencode` instead of `agy`. On macOS/Linux, use `export MIMO_API_KEY=your-local-proxy-key`, `export MIMO_API_URL=http://127.0.0.1:31415/v1`, `export MIMO_VIDEO_API_URL=http://127.0.0.1:31415/v1`, and `export MIMO_MODEL=auto` before launching the agent. The proxy key can be any non-empty value if your local server does not authenticate. `MIMO_API_URL` is the fallback for chat calls. Separate ASR/TTS endpoint and key overrides are listed in the [configuration playbook](skills/video-recap/references/config-playbook.md), but those paths use provider-specific payloads: a generic OpenAI-compatible proxy must explicitly translate them before it can serve MiMo ASR/TTS. Use local Whisper to avoid remote ASR, and edge-tts or Fish Audio to choose a non-MiMo narration provider.
+
+`--mimo-video-overview` uses MiMo-specific video payloads and is skipped for a generic OpenAI-compatible endpoint. The regular frame-VLM path uses image inputs and is supported when the proxy implements them.
+
+To use local Whisper ASR, install `faster-whisper` in the Python environment used by the agent and point to an existing faster-whisper model directory containing `model.bin`:
+
+```powershell
+py -m pip install faster-whisper
+$env:ASR_PROVIDER = "whisper-local"
+$env:WHISPER_MODEL_DIR = "C:\Models\whisper-large-v3-turbo"
+```
+
+With `ASR_PROVIDER=auto`, that local model is preferred when the configured directory exists; otherwise ASR falls back to MiMo. Set `ASR_PROVIDER=mimo-asr` to force cloud ASR.
+
+To synthesize narration with edge-tts, install its Python package and select a voice. edge-tts does not need an API key, but it is an online speech service, not offline local synthesis:
+
+```powershell
+py -m pip install edge-tts
+$env:TTS_PROVIDER = "edge-tts"
+$env:EDGE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
+```
+
+The default edge-tts voice is `hi-IN-SwaraNeural`; choose a voice matching the narration language. See the [configuration playbook](skills/video-recap/references/config-playbook.md) for Whisper runtime controls, provider precedence, and all environment variables.
+
+</details>
+
+<details>
 <summary><strong>Optional: voice with Fish Audio</strong></summary>
 
 ```bash
@@ -113,14 +249,14 @@ export FISH_API_KEY=your-fish-key
 export FISH_TTS_REFERENCE_ID=your-voice-model-id  # optional; the built-in "娱乐扒妹" narration voice is the default
 ```
 
-The default model is `s2.1-pro-free` with the built-in "娱乐扒妹" voice (reference ID `5653cea4ac83480aaf2bf45406556185`); billing follows Fish Audio's own terms. ASR and VLM still use MiMo, and local reference-voice cloning (`--voice-ref`) is available on the MiMo path only.
+The default model is `s2.1-pro-free` with the built-in "娱乐扒妹" voice (reference ID `5653cea4ac83480aaf2bf45406556185`); billing follows Fish Audio's own terms. Fish Audio changes narration only; your selected ASR and VLM settings remain unchanged (MiMo by default). Local reference-voice cloning (`--voice-ref`) is available on the MiMo path only.
 
 </details>
 
 Once installed, ask the agent to check the environment:
 
 ```text
-Check the video-recap environment and tell me whether Python, ffmpeg/libass, and MiMo are ready.
+Check the video-recap environment and tell me whether Python, ffmpeg/libass, the configured VLM endpoint, and the selected ASR/TTS providers are ready.
 ```
 
 > Changes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/zenstory-ai/video-recap-skills/releases). The repository moved from `worldwonderer/video-recap-skills` to `zenstory-ai/video-recap-skills`; if you installed from the old address, point at the new one.
@@ -308,11 +444,19 @@ Export contents and limits: [JianYing draft export and cost](docs/capcut-jianyin
 
 Copy one and adjust it. Give the video path, the recap you want, and any useful story context; you never run the repository's Python scripts by hand.
 
-**Full-video recap:**
+**English movie explainer:**
 
 ```text
-Make a Chinese-narration recap of /path/to/video.mp4. It is episode 1 of 庆余年, the lead is 范闲, and subtitles should be burned in.
+Use video-recap to make a clear, engaging English movie explainer from D:\Movies\Movie.mp4. Narrate and subtitle in natural English, preserve important original dialogue, burn in the English narration subtitles, and export the MP4 plus SRT for CapCut. Use edge-tts voice en-US-AriaNeural.
 ```
+
+**Hindi movie recap:**
+
+```text
+Use video-recap to make a Hindi movie recap from D:\Movies\Movie.mp4. Write and narrate in natural Hindi (Devanagari), subtitle the narration in Hindi, keep important original dialogue in its original language with matching subtitles, and export the MP4 plus SRT for CapCut. Use edge-tts voice hi-IN-SwaraNeural.
+```
+
+You can ask for another language or voice/accent in the same way. The agent should follow the requested narration language, choose a matching TTS voice when available, and keep original-dialogue captions in the source language unless you ask for translation. Check the rendered captions for missing glyphs, especially for Devanagari; set `SUBTITLE_FONT_NAME` or `SUBTITLE_FONT_FILE` to a font installed on the rendering machine when needed.
 
 **Cut a long video or several episodes into one short recap:**
 
@@ -347,10 +491,10 @@ The six skills hand off through the JSON / MP4 artifacts in `work_dir`:
 | Skill | Responsibility | In → Out |
 |---|---|---|
 | [`video-recap`](skills/video-recap/) | Orchestrator and environment doctor; the one to use for everyday end-to-end production | `video` → `recap_<name>.mp4` |
-| [`video-understanding`](skills/video-understanding/) | Scene detection · frame extraction · ASR (`mimo-v2.5-asr`) · VLM (`mimo-v2.5`) · timeline fusion · creative brief | `video` → `scenes / asr_result / vlm_analysis / silence_periods / timeline_fusion / agent_narration_brief.md` |
+| [`video-understanding`](skills/video-understanding/) | Scene detection · frame extraction · ASR (MiMo or local faster-whisper) · VLM (MiMo or OpenAI-compatible image gateway) · timeline fusion · creative brief | `video` → `scenes / asr_result / vlm_analysis / silence_periods / timeline_fusion / agent_narration_brief.md` |
 | [`video-script`](skills/video-script/) | Directing / story / picture / sound plan, narration writing, advisory review and lint; call it alone for planning or writing only | `brief + index` → `recap_story_plan.json + visual_audio_board.json + [clip_plan.json] + narration.json` |
 | [`video-cut`](skills/video-cut/) | Clip plan → rendered cut; cut first, narrate second on the output timeline | `clip_plan.json + video` → `edited_source.mp4` |
-| [`video-voiceover`](skills/video-voiceover/) | Synthesise narration audio (MiMo `mimo-v2.5-tts` / Fish Audio `s2.1-pro-free`) | `narration.json` → `tts_segments/ + tts_meta.json` |
+| [`video-voiceover`](skills/video-voiceover/) | Synthesise narration audio (MiMo / Fish Audio / edge-tts / IndexTTS) | `narration.json` → `tts_segments/ + tts_meta.json` |
 | [`video-assemble`](skills/video-assemble/) | Mix · duck original audio · render subtitles · multi-track timeline · optional JianYing export | `video + tts_meta` → `recap_<name>.mp4 + subtitles.srt/.ass + timeline.json` |
 
 The recap is always written to `recap_<name>.mp4` alongside `subtitles.srt/.ass`; all intermediate artifacts live in `work_dir/`, with the field contracts in the [data schema](skills/video-recap/references/data-schema.md).
@@ -365,13 +509,13 @@ Analyze /path/to/ep1.mp4 and save reusable understanding artifacts under /path/t
 
 The library holds JSON, Markdown, and an index only; it copies no media, builds no database, and uses no embeddings. The agent simply `grep`s the filesystem.
 
-**Run an advisory MiMo review before and after assembly, and export a JianYing draft:**
+**Run an advisory MiMo review before and after assembly, and export the optional JianYing-format draft:**
 
 ```text
-Make a recap of /path/to/video.mp4, run MiMo quality review before assembly and after rendering, and export an editable JianYing draft.
+Make a Hindi recap of /path/to/video.mp4, run MiMo quality review before assembly and after rendering, and export the optional JianYing-format editable draft as well as the MP4 and SRT for CapCut.
 ```
 
-MiMo review makes at most one request per stage, only suggests, and never blocks the render if it fails.
+MiMo review makes at most one request per stage, only suggests, and never blocks the render if it fails. The draft exporter follows the JianYing/Chinese CapCut project format; it is not verified against every international CapCut desktop/mobile version. Use the MP4 and SRT as the portable CapCut handoff, and verify the optional draft in your installed app before relying on it.
 
 **Align recap subtitles with the source's burned-in subtitle band:**
 
@@ -463,6 +607,6 @@ This project is maintained by [ZenStory AI](https://zenstory.ai) — open-source
 | [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode) | Web-fiction writing skill pack: chart scanning, deconstruction, drafting, de-AI-flavor, covers |
 | [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI short-drama / motion-comic suite: scripts, assets, storyboards, image & video prompts, review |
 | [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | Agent skills for source-grounded novel adaptation, target-runtime builds, and evidence-based QA |
-| [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | Create Chinese-narration recaps from supported video files, with optional editable JianYing/CapCut draft export (this repo) |
+| [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | Create movie explainers in the requested narration language from supported video files, with MP4/subtitle delivery and an optional JianYing-format draft (this repo) |
 | [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | Community DeepSeek Harness plugin with novel, short-drama, game and video-recap workbenches |
 | [zenstory](https://github.com/zenstory-ai/zenstory) | Chat-to-create AI novel-writing workbench ([app.zenstory.ai](https://app.zenstory.ai)) |

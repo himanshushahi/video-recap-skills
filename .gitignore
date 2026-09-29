@@ -1,5 +1,7 @@
 __pycache__/
 .omc/
+.opencode/
+.agents/skills/
 *.pyc
 .DS_Store
 .pytest_cache/

@@ -219,10 +219,8 @@ def _subtitle_entry_chunks(raw_chunks):
 
 
 def _normalize_subtitle_text(text):
-    """Normalize Chinese em-dashes in burned subtitle text: a run of one-or-more "—" (incl. "——")
-    collapses to a single "，". Then collapse any resulting double commas ("，，"→"，") so the dash
-    swap never leaves a doubled comma."""
-    return re.sub(r"，{2,}", "，", re.sub(r"—+", "，", text))
+    """Collapse repeated em dashes without substituting language-specific punctuation."""
+    return re.sub(r"—{2,}", "—", text)
 
 
 def _split_subtitle_chunks(text, max_chars):
@@ -254,13 +252,18 @@ def _split_subtitle_chunks(text, max_chars):
         if len(clause) <= max_chars:
             sized.append(clause)
         else:
-            piece_count = (len(clause) + max_chars - 1) // max_chars
-            base, extra = divmod(len(clause), piece_count)
-            cursor = 0
-            for piece_index in range(piece_count):
-                width = base + (1 if piece_index < extra else 0)
-                sized.append(clause[cursor:cursor + width])
-                cursor += width
+            remaining = clause
+            while len(remaining) > max_chars:
+                split_at = remaining.rfind(" ", 0, max_chars + 1)
+                if split_at <= 0:
+                    split_at = max_chars
+                    sized.append(remaining[:split_at])
+                    remaining = remaining[split_at:]
+                else:
+                    sized.append(remaining[:split_at].rstrip())
+                    remaining = remaining[split_at + 1:].lstrip()
+            if remaining:
+                sized.append(remaining)
     chunks, cur = [], ""
     for clause in sized:
         sentence_closed = cur.rstrip().endswith(tuple(_SUBTITLE_TERMINAL_PUNCTUATION))

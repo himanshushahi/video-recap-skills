@@ -9,6 +9,7 @@ AUDIO_MODES = ("narration", "source-mix", "adopted-packet-copy")
 _TTS_OPTIONS = frozenset({
     "--tts-provider",
     "--mimo-tts-voice",
+    "--edge-tts-voice",
     "--voice-ref",
     "--allow-partial-tts",
     "--preserve-approved-text",

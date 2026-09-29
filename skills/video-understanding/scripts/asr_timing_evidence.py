@@ -13,6 +13,7 @@ EVIDENCE_FILENAME = "asr_timing_evidence.json"
 SCHEMA_VERSION = 2
 VALID_STATUSES = {
     "AVAILABLE_COARSE",
+    "AVAILABLE_WHISPER_LOCAL",
     "EXPLICITLY_SKIPPED",
     "UNAVAILABLE_NO_KEY",
     "UNAVAILABLE_NO_DURATION",
@@ -157,6 +158,9 @@ def _valid_glossary(payload, work_dir, legacy):
 def _valid_status_relationships(status, result, audio):
     texts = [str(segment.get("text") or "") for segment in result]
     if status == "AVAILABLE_COARSE":
+        return bool(result) and any(texts) and _is_identity(audio)
+    if status == "AVAILABLE_WHISPER_LOCAL":
+        # 本地 Whisper：模型原生分段时间戳；有效性规则与粗窗口一致（非空 + 音频绑定）。
         return bool(result) and any(texts) and _is_identity(audio)
     if status == "EMPTY_UNKNOWN":
         return bool(result) and not any(texts) and _is_identity(audio)

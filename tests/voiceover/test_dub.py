@@ -13,6 +13,29 @@ sys.path.insert(
 import dub  # noqa: E402
 
 
+def test_dub_asr_uses_asr_specific_endpoint_and_key(monkeypatch):
+    voiceover_lib = sys.modules[dub.mimo_asr_api_call.__module__]
+    calls = []
+    monkeypatch.setitem(
+        voiceover_lib.CONFIG,
+        "mimo_asr_api_url",
+        "http://127.0.0.1:31415/v1/chat/completions",
+    )
+    monkeypatch.setitem(voiceover_lib.CONFIG, "mimo_asr_api_key", "asr-proxy-key")
+    monkeypatch.setitem(voiceover_lib.CONFIG, "mimo_asr_env_var", "MIMO_ASR_API_KEY")
+    monkeypatch.setattr(
+        voiceover_lib,
+        "api_call",
+        lambda payload, **kwargs: calls.append((payload, kwargs)) or {"choices": []},
+    )
+
+    voiceover_lib.mimo_asr_api_call({"model": "mimo-v2.5-asr"})
+
+    assert calls[0][1]["api_url"] == "http://127.0.0.1:31415/v1/chat/completions"
+    assert calls[0][1]["api_key"] == "asr-proxy-key"
+    assert calls[0][1]["api_env_var"] == "MIMO_ASR_API_KEY"
+
+
 def test_strip_reasoning_residue_removes_think_leakage():
     """Regression: MiMo -asr models are not thinking-disabled, so <think> reasoning can leak
     into the transcript in several shapes. All must be stripped; clean text is untouched."""

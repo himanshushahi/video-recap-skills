@@ -10,6 +10,18 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **按用户要求生成多语言解说。** recap/script 技能要求旁白与解说字幕遵循用户指定语言，原声字幕保留源语言；recap 新增 `--edge-tts-voice` 逐次选择匹配音色（如 `hi-IN-SwaraNeural` / `en-US-AriaNeural`），并传入 TTS 缓存与续跑命令。
+- **本地 ASR（faster-whisper）。** `ASR_PROVIDER=auto|mimo-asr|whisper-local`（`--asr-provider` 透传）：`auto` 下 `WHISPER_MODEL_DIR` 存在即优先本地转写，否则走 MiMo；本地路径一次转录整个音频，时间戳为模型原生分段，证据状态为 `AVAILABLE_WHISPER_LOCAL`，缓存指纹包含实际提供方、模型设置和 `model.bin` 文件身份。`WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` / `WHISPER_LANGUAGE` / `WHISPER_VAD_FILTER` 可调运行时。
+- **edge-tts 在线配音。** `--tts-provider edge-tts`（无需 API key，需 `pip install edge-tts` + ffmpeg），经 `EDGE_TTS_VOICE` 选音色，默认 `hi-IN-SwaraNeural`；每段缓存带 provider receipt，`doctor` 检查本机依赖。
+- **任意 OpenAI 兼容 VLM 网关。** `MIMO_API_URL` / `MIMO_VIDEO_API_URL` 可指向本地 chat-completions 网关（如 `http://127.0.0.1:31415/v1`，需支持图像输入），`MIMO_MODEL` 可为网关模型名（如 `auto`）；传输层同时发送 `api-key` 与 `Authorization: Bearer`，`thinking: disabled` 与 token 上限做双向兼容，只对 `*.xiaomimimo.com` 注入 MiMo 私有字段。`MIMO_ASR_API_URL` / `MIMO_TTS_API_URL` 仍使用对应 MiMo payload 格式，通用代理需显式转换；MiMo 默认链路零配置不变。
+
+### Changed
+
+- English subtitle clauses now split at word boundaries when possible; repeated em dashes collapse without replacing them with Chinese punctuation. Native JianYing-format draft export is optional and is not a guarantee of compatibility with every international CapCut version.
+- `asr_timing_evidence.json` 新增 `AVAILABLE_WHISPER_LOCAL` 状态；ASR 缓存记录解析后的实际提供方及本地模型文件身份；`doctor` 按提供方上报，并检查 faster-whisper / edge-tts 依赖、拒绝未知 ASR provider；`tests/orchestrator/env-inventory-v1.json` 登记 7 个新环境变量。
+
 ## [0.6.0] - 2026-09-27
 
 三条主线：资源库与模板（登记与校验、项目绑定、每次运行的资源记录、字体文件、静态包装图层）；只读的本机剪辑台 dashboard；以及 skill 层分包、去内容哈希、测试审计后的架构梳理。

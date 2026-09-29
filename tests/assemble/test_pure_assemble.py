@@ -1568,6 +1568,16 @@ def test_split_subtitle_chunks_balances_hard_wrap_without_orphan_character():
     assert max(map(len, chunks)) - min(map(len, chunks)) <= 1
 
 
+def test_split_subtitle_chunks_preserves_english_word_boundaries():
+    text = "The detective realizes the missing witness is still alive."
+
+    chunks = _split_subtitle_chunks(text, max_chars=18)
+
+    assert all(len(chunk) <= 18 for chunk in chunks)
+    assert "".join(chunks).replace(" ", "") == text.replace(" ", "")
+    assert all(not chunk.endswith("The") and not chunk.endswith("wit") for chunk in chunks)
+
+
 def test_subtitle_entries_keep_timing_topology_when_stripping_display_punctuation():
     entries = _subtitle_entries(
         [

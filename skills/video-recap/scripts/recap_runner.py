@@ -81,6 +81,8 @@ def _voiceover_args(work_dir, narration_path, args):
         result += ["--tts-provider", args.tts_provider]
     if args.mimo_tts_voice:
         result += ["--mimo-voice", args.mimo_tts_voice]
+    if getattr(args, "edge_tts_voice", None):
+        result += ["--edge-tts-voice", args.edge_tts_voice]
     if args.voice_ref:
         result += ["--voice-ref", args.voice_ref]
     if args.allow_partial_tts:
@@ -429,6 +431,12 @@ def _run_multi_cut(videos, work_dir, args):
 def main():
     ap, args = parse_args()
 
+    if args.edge_tts_voice:
+        if args.tts_provider == "auto":
+            args.tts_provider = "edge-tts"
+        elif args.tts_provider != "edge-tts":
+            ap.error("--edge-tts-voice requires --tts-provider edge-tts")
+
     if args.require_final_qc and args.edit_mode == "dub":
         ap.error("--require-final-qc is only supported in full/cut modes, not dub")
     # argparse `choices` does not cover the TTS_PROVIDER env default; source-owned audio and
@@ -488,7 +496,7 @@ def main():
         )
         if explicit_mimo_voice and args.voice_ref:
             ap.error("--mimo-tts-voice and --voice-ref are mutually exclusive")
-        if args.tts_provider in {"fish-audio", "index-tts"} and (
+        if args.tts_provider in {"fish-audio", "index-tts", "edge-tts"} and (
             explicit_mimo_voice or args.voice_ref
         ):
             ap.error(
@@ -498,9 +506,9 @@ def main():
         ap.error(
             "--voice-ref is only supported in full/cut modes; dub clones the source voice automatically"
         )
-    if args.edit_mode == "dub" and args.tts_provider == "fish-audio":
+    if args.edit_mode == "dub" and args.tts_provider in {"fish-audio", "edge-tts"}:
         ap.error(
-            "--tts-provider fish-audio is only supported in full/cut modes; "
+            f"--tts-provider {args.tts_provider} is only supported in full/cut modes; "
             "dub uses MiMo voice cloning"
         )
     if args.edit_mode == "dub" and args.subtitle_y_top is not None:

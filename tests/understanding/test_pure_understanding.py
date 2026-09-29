@@ -138,15 +138,16 @@ def test_analyze_scenes_rejects_empty_frames(tmp_path):
 def test_mimo_api_headers_and_payload_mapping(monkeypatch):
     monkeypatch.setitem(CONFIG, "api_key", "secret")
 
-    # MiMo is the only provider: always an api-key header, never Bearer.
+    # Both MiMo's api-key header and the standard Bearer header are sent so
+    # generic OpenAI-compatible gateways authenticate too.
     headers = _api_headers()
     assert headers["api-key"] == "secret"
-    assert "Authorization" not in headers
+    assert headers["Authorization"] == "Bearer secret"
 
     payload = _prepare_api_payload({"model": "mimo-v2.5", "max_tokens": 7})
     assert payload["max_completion_tokens"] == 7
+    assert payload["max_tokens"] == 7
     assert payload["thinking"] == {"type": "disabled"}
-    assert "max_tokens" not in payload
 
     # TTS and ASR models must NOT get a `thinking` field (no text-reasoning budget).
     tts_payload = _prepare_api_payload({"model": "mimo-v2.5-tts", "max_tokens": 7})
@@ -154,6 +155,47 @@ def test_mimo_api_headers_and_payload_mapping(monkeypatch):
     assert "thinking" not in tts_payload
     asr_payload = _prepare_api_payload({"model": "mimo-v2.5-asr"})
     assert "thinking" not in asr_payload
+
+
+def test_generic_gateway_payload_omits_mimo_only_thinking(monkeypatch):
+    monkeypatch.setitem(CONFIG, "api_key", "secret")
+    payload = _prepare_api_payload(
+        {"model": "auto", "max_tokens": 7},
+        api_url="http://127.0.0.1:31415/v1/chat/completions",
+    )
+    assert payload["max_completion_tokens"] == 7
+    assert payload["max_tokens"] == 7
+    assert "thinking" not in payload
+
+
+def test_analyze_scenes_uses_video_endpoint(monkeypatch, tmp_path):
+    frame = tmp_path / "frame_00001.jpg"
+    frame.write_bytes(b"frame")
+    calls = []
+
+    monkeypatch.setitem(CONFIG, "fps", 1)
+    monkeypatch.setitem(CONFIG, "vlm_workers", 1)
+    monkeypatch.setitem(CONFIG, "vlm_max_frames", 3)
+    monkeypatch.setitem(CONFIG, "mimo_video_api_key", "video-proxy-key")
+    monkeypatch.setitem(CONFIG, "mimo_video_api_url", "http://127.0.0.1:31415/v1/chat/completions")
+    monkeypatch.setattr("vlm.load_prompt", lambda _name: "describe")
+    monkeypatch.setattr(
+        "lib.api_call",
+        lambda payload, **kwargs: calls.append((payload, kwargs)) or {
+            "choices": [{"message": {"content": "【描述】\nA person enters."}}]
+        },
+    )
+    monkeypatch.setattr(
+        "vlm.api_call",
+        lambda *_args, **_kwargs: pytest.fail("frame VLM used the shared endpoint"),
+    )
+
+    result = analyze_scenes([{"start": 0.0, "end": 1.0}], [frame], tmp_path)
+
+    assert len(calls) == 1
+    assert calls[0][1]["api_url"] == "http://127.0.0.1:31415/v1/chat/completions"
+    assert calls[0][1]["api_key"] == "video-proxy-key"
+    assert result[0]["description"] == "A person enters."
 
 
 def test_mimo_video_overview_uses_scene_chunks(monkeypatch, tmp_path):
@@ -209,6 +251,27 @@ def test_mimo_video_overview_uses_scene_chunks(monkeypatch, tmp_path):
         for item in overview["chunks"]
     )
     assert (tmp_path / "mimo_video_overview.json").exists()
+
+
+def test_video_overview_skips_non_mimo_endpoint(monkeypatch, tmp_path):
+    """MiMo-only video_url must never be sent to a generic gateway."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"fake-video")
+    monkeypatch.setitem(CONFIG, "mimo_video_api_key", "local-key")
+    monkeypatch.setitem(
+        CONFIG, "mimo_video_api_url", "http://127.0.0.1:31415/v1/chat/completions"
+    )
+    monkeypatch.setitem(CONFIG, "mimo_video_overview", True)
+    monkeypatch.setattr(
+        "vlm.mimo_video_api_call", lambda payload: pytest.fail("no network")
+    )
+
+    assert (
+        analyze_video_overview(
+            video, tmp_path, [{"scene_id": 0, "start": 0.0, "end": 5.0}]
+        )
+        is None
+    )
 
 
 def test_mimo_video_chunks_split_on_scene_boundaries(monkeypatch):

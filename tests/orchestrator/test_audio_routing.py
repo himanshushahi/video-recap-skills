@@ -359,6 +359,42 @@ def test_index_tts_is_an_explicit_narration_provider_and_forwards(monkeypatch, t
     assert voiceover[voiceover.index("--tts-provider") + 1] == "index-tts"
 
 
+def test_edge_tts_voice_is_selected_and_forwarded_per_run(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["recap.py", "input.mp4", "--edge-tts-voice", "en-US-AriaNeural"],
+    )
+
+    _, parsed = recap_cli.parse_args()
+    args = _args(tts_provider="edge-tts")
+    args.edge_tts_voice = parsed.edge_tts_voice
+    voiceover = recap_runner._voiceover_args(
+        tmp_path, tmp_path / "narration.json", args
+    )
+    continuation = recap_timeline._continuation_command(
+        tmp_path / "input.mp4", tmp_path, args
+    )
+
+    assert parsed.edge_tts_voice == "en-US-AriaNeural"
+    assert voiceover[voiceover.index("--edge-tts-voice") + 1] == "en-US-AriaNeural"
+    assert "--edge-tts-voice en-US-AriaNeural" in continuation
+
+
+def test_edge_tts_voice_option_selects_provider(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["recap.py", "--doctor", "--edge-tts-voice", "hi-IN-SwaraNeural"],
+    )
+    monkeypatch.setattr(recap_runner, "_run", lambda *args: calls.append(args))
+
+    recap_runner.main()
+
+    assert calls == [("video-recap", "doctor.py", "--tts-provider", "edge-tts")]
+
+
 @pytest.mark.parametrize(
     "extra",
     [

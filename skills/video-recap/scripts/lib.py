@@ -19,6 +19,8 @@ MIMO_TOKEN_PLAN_API_URLS = {
 DEFAULT_MIMO_MODEL = "mimo-v2.5"          # VLM / chat (vision understanding)
 DEFAULT_MIMO_ASR_MODEL = "mimo-v2.5-asr"  # speech-to-text
 DEFAULT_MIMO_TTS_MODEL = "mimo-v2.5-tts"  # text-to-speech
+DEFAULT_WHISPER_MODEL_DIR = r"C:\Users\himan\AppData\Local\Narrato\models\whisper\turbo"
+DEFAULT_EDGE_TTS_VOICE = "hi-IN-SwaraNeural"
 DEFAULT_FISH_TTS_API_URL = "https://api.fish.audio/v1/tts"
 DEFAULT_FISH_TTS_MODEL = "s2.1-pro-free"
 DEFAULT_FISH_TTS_REFERENCE_ID = "5653cea4ac83480aaf2bf45406556185"
@@ -35,6 +37,11 @@ def normalize_api_url(raw_url):
 def is_mimo_token_plan_key(api_key):
     """Return True for Xiaomi MiMo Token Plan keys, which use token-plan base URLs."""
     return api_key.startswith("tp-")
+
+
+def _is_mimo_endpoint(url):
+    """True when a base URL points at Xiaomi MiMo (which needs MiMo-only params)."""
+    return "xiaomimimo.com" in str(url or "").lower()
 
 
 def default_mimo_api_url(is_token_plan):
@@ -154,6 +161,8 @@ CONFIG = {
     "vlm_model_source": "env" if os.environ.get("MIMO_MODEL") else "default",
     "mimo_asr_model": os.environ.get("MIMO_ASR_MODEL", DEFAULT_MIMO_ASR_MODEL),
     "mimo_asr_language": os.environ.get("MIMO_ASR_LANGUAGE", "auto"),  # auto | zh | en
+    "asr_provider": os.environ.get("ASR_PROVIDER", "auto").strip().lower(),
+    "whisper_model_dir": os.environ.get("WHISPER_MODEL_DIR", DEFAULT_WHISPER_MODEL_DIR),
     "mimo_tts_model": os.environ.get("MIMO_TTS_MODEL", DEFAULT_MIMO_TTS_MODEL),
     "mimo_tts_model_source": "env" if os.environ.get("MIMO_TTS_MODEL") else "default",
     "mimo_tts_voice": os.environ.get("MIMO_TTS_VOICE", "冰糖"),
@@ -168,6 +177,8 @@ CONFIG = {
     "fish_tts_reference_id_source": (
         "env" if os.environ.get("FISH_TTS_REFERENCE_ID") else "default"
     ),
+    "edge_tts_voice": os.environ.get("EDGE_TTS_VOICE", DEFAULT_EDGE_TTS_VOICE).strip(),
+    "edge_tts_voice_source": "env" if os.environ.get("EDGE_TTS_VOICE") else "default",
     "vlm_workers": env_int("VLM_WORKERS", 8, minimum=1),  # VLM 并行分析线程数
 }
 
@@ -192,13 +203,22 @@ def mimo_qc_api_call(payload, *, config=None, timeout=60):
     endpoint = normalize_api_url(
         cfg.get("mimo_video_api_url") or cfg.get("mimo_api_url") or cfg.get("api_url")
     )
+    wire_payload = dict(payload)
+    if not _is_mimo_endpoint(endpoint):
+        # Generic OpenAI-compatible gateways reject MiMo-only fields.
+        wire_payload.pop("thinking", None)
+    if "max_completion_tokens" in wire_payload and "max_tokens" not in wire_payload:
+        wire_payload["max_tokens"] = wire_payload["max_completion_tokens"]
+    elif "max_tokens" in wire_payload and "max_completion_tokens" not in wire_payload:
+        wire_payload["max_completion_tokens"] = wire_payload["max_tokens"]
     request = urllib.request.Request(
         endpoint,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        data=json.dumps(wire_payload, ensure_ascii=False).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
             "User-Agent": "video-recap/mimo-qc",
             "api-key": api_key,
+            "Authorization": f"Bearer {api_key}",
         },
         method="POST",
     )

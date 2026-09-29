@@ -6,7 +6,7 @@ import os
 from lib import env_bool
 from recap_source import AUDIO_MODES
 
-TTS_PROVIDERS = ("auto", "mimo-tts", "fish-audio", "index-tts")
+TTS_PROVIDERS = ("auto", "mimo-tts", "fish-audio", "edge-tts", "index-tts")
 
 
 class _RecordExplicit:
@@ -62,6 +62,12 @@ def parse_args(argv=None):
     )
     core.add_argument("--output-dir", default=None)
     core.add_argument("--skip-asr", action="store_true")
+    core.add_argument(
+        "--asr-provider",
+        default=os.environ.get("ASR_PROVIDER", "auto"),
+        choices=["auto", "mimo-asr", "whisper-local"],
+        help="ASR provider; auto prefers local whisper when WHISPER_MODEL_DIR exists",
+    )
     core.add_argument("--mimo-video-overview", action="store_true")
     core.add_argument(
         "--consolidate",
@@ -80,9 +86,14 @@ def parse_args(argv=None):
         "--tts-provider",
         default=os.environ.get("TTS_PROVIDER", "auto"),
         choices=TTS_PROVIDERS,
-        help="voiceover provider; auto prefers configured MiMo, then Fish Audio; Index is explicit",
+        help="voiceover provider; auto prefers edge-tts when EDGE_TTS_VOICE is set, else configured MiMo, then Fish Audio; Index is explicit",
     )
     voice.add_argument("--mimo-tts-voice", default=None, help="MiMo TTS voice")
+    voice.add_argument(
+        "--edge-tts-voice",
+        default=None,
+        help="per-run Edge TTS voice; selecting it also selects --tts-provider edge-tts",
+    )
     voice.add_argument(
         "--voice-ref",
         default=None,

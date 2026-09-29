@@ -7,6 +7,7 @@ from pathlib import Path
 from asr_timing_evidence import EVIDENCE_FILENAME, validate_asr_timing_evidence
 from extract import FRAME_TIME_CONVENTION_VERSION
 from lib import CONFIG, log, file_identity, load_prompt
+from whisper_local import resolve_asr_provider
 
 
 from vlm import (
@@ -200,12 +201,26 @@ def _scene_cache_payload(video_path):
 
 
 def _asr_cache_payload(video_path, *, skip_asr=False):
+    resolved_provider = resolve_asr_provider()
+    whisper_model = Path(str(CONFIG.get("whisper_model_dir") or "")) / "model.bin"
     return {
         "schema_version": 1,
         "stage": "asr",
         "inputs": {"video": _video_input(video_path)},
         "settings": {
             "skip_asr": bool(skip_asr),
+            "asr_provider": (CONFIG.get("asr_provider") or "auto"),
+            "resolved_asr_provider": resolved_provider,
+            "whisper_model_dir": CONFIG.get("whisper_model_dir"),
+            "whisper_model_identity": (
+                _artifact_identity(whisper_model)
+                if resolved_provider == "whisper-local"
+                else None
+            ),
+            "whisper_device": CONFIG.get("whisper_device"),
+            "whisper_compute_type": CONFIG.get("whisper_compute_type"),
+            "whisper_language": CONFIG.get("whisper_language"),
+            "whisper_vad_filter": CONFIG.get("whisper_vad_filter"),
             "mimo_asr_api_key_present": bool(CONFIG.get("mimo_asr_api_key")),
             "mimo_asr_api_url": CONFIG.get("mimo_asr_api_url"),
             "mimo_asr_model": CONFIG.get("mimo_asr_model"),

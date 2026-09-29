@@ -4,6 +4,7 @@ import argparse
 
 
 import json
+import os
 
 from pathlib import Path
 
@@ -73,6 +74,12 @@ def main():
         help="cut-mode target duration to document in the writing brief",
     )
     ap.add_argument("--skip-asr", action="store_true")
+    ap.add_argument(
+        "--asr-provider",
+        default=os.environ.get("ASR_PROVIDER", "auto"),
+        choices=["auto", "mimo-asr", "whisper-local"],
+        help="ASR provider (default: local whisper when WHISPER_MODEL_DIR exists, else MiMo)",
+    )
     ap.add_argument("--mimo-video-overview", action="store_true")
     ap.add_argument(
         "--force", action="store_true", help="ignore cached artifacts and recompute"
@@ -112,6 +119,7 @@ def main():
         CONFIG["edit_mode"] = args.edit_mode
     if args.target_duration is not None:
         CONFIG["target_duration"] = args.target_duration
+    CONFIG["asr_provider"] = args.asr_provider
     if args.mimo_video_overview:
         CONFIG["mimo_video_overview"] = True
 

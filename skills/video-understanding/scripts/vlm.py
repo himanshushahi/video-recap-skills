@@ -13,7 +13,7 @@ from extract import (
     parse_frame_number,
 )
 from lib import CONFIG
-from lib import log, api_call, load_prompt, mimo_video_api_call, run_cmd, file_identity
+from lib import log, api_call, load_prompt, mimo_video_api_call, run_cmd, file_identity, _is_mimo_endpoint
 
 # ── Step 4: VLM 视觉分析 ─────────────────────────────────────────────
 
@@ -200,7 +200,7 @@ def analyze_scenes(scenes, frames, work_dir, *, resume=True):
 
         raw_response = ""
         for attempt in range(3):
-            resp = api_call(payload)
+            resp = mimo_video_api_call(payload)
             try:
                 msg = resp["choices"][0]["message"]
                 raw_response = (msg.get("content") or msg.get("reasoning_content") or "")
@@ -587,6 +587,9 @@ def analyze_video_overview(video_path, work_dir, scenes=None):
         return None
     if not CONFIG["mimo_video_api_key"]:
         log("MiMo 视频概览已启用，但未设置 MIMO_VIDEO_API_KEY/MIMO_API_KEY，跳过")
+        return None
+    if not _is_mimo_endpoint(CONFIG.get("mimo_video_api_url")):
+        log("跳过 MiMo 分片视频概览：当前 VLM 端点不是 MiMo，video_url 为 MiMo 私有协议")
         return None
 
     chunks = _mimo_video_chunks(scenes)

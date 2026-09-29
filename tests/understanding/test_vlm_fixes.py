@@ -73,7 +73,7 @@ def test_null_content_falls_back_to_reasoning(monkeypatch, tmp_path):
     """providers returning content=null must coerce to reasoning_content, not crash on .strip()."""
     frames = _scene_setup(monkeypatch, tmp_path)
     monkeypatch.setattr(
-        "vlm.api_call",
+        "vlm.mimo_video_api_call",
         lambda payload: {"choices": [{"message": {
             "content": None,
             "reasoning_content": "【描述】男子拿起茶壶",
@@ -94,7 +94,7 @@ def test_analyze_scenes_sends_the_editorial_evidence_prompt_to_vlm(monkeypatch, 
         captured["prompt"] = payload["messages"][0]["content"][-1]["text"]
         return _reply("【描述】人物对峙\n【深层分析】关系发生变化")
 
-    monkeypatch.setattr("vlm.api_call", fake_api_call)
+    monkeypatch.setattr("vlm.mimo_video_api_call", fake_api_call)
 
     analyses = analyze_scenes([{"start": 0.0, "end": 2.0}], frames, tmp_path)
     numbered_items = {
@@ -127,7 +127,7 @@ def test_vlm_resume_cache_persists_on_failure_and_resumes(monkeypatch, tmp_path)
     vlm_scene_cache.json so a re-run only re-analyzes the failed scene."""
     frames = _scene_setup(monkeypatch, tmp_path, frame_count=4)
     state = {"fail_mid": True, "calls": 0}
-    monkeypatch.setattr("vlm.api_call", _fail_scene_two_until_cleared(state))
+    monkeypatch.setattr("vlm.mimo_video_api_call", _fail_scene_two_until_cleared(state))
 
     with pytest.raises(RuntimeError, match="断点续传"):
         analyze_scenes(THREE_SCENES, frames, tmp_path)
@@ -148,7 +148,7 @@ def test_vlm_resume_cache_invalidates_on_request_setting_flip(monkeypatch, tmp_p
     frames = _scene_setup(monkeypatch, tmp_path, frame_count=4)
     monkeypatch.setitem(CONFIG, "mimo_disable_thinking", True)
     state = {"fail_mid": True, "calls": 0}
-    monkeypatch.setattr("vlm.api_call", _fail_scene_two_until_cleared(state))
+    monkeypatch.setattr("vlm.mimo_video_api_call", _fail_scene_two_until_cleared(state))
 
     with pytest.raises(RuntimeError, match="断点续传"):
         analyze_scenes(THREE_SCENES, frames, tmp_path)
@@ -176,7 +176,7 @@ def test_vlm_auto_throttle_retry_recovers_transient_429(monkeypatch, tmp_path):
             raise RuntimeError("HTTP 429 — Too many requests")
         return _reply("【描述】测试画面")
 
-    monkeypatch.setattr("vlm.api_call", fake_api_call)
+    monkeypatch.setattr("vlm.mimo_video_api_call", fake_api_call)
     analyses = analyze_scenes(THREE_SCENES, frames, tmp_path)  # must NOT raise
     assert len(analyses) == 3 and all(a["description"] == "测试画面" for a in analyses)
     assert not (tmp_path / "vlm_scene_cache.json").exists()
@@ -193,7 +193,7 @@ def test_null_content_and_null_reasoning_coerce_to_empty_then_retry(monkeypatch,
             return {"choices": [{"message": {"content": None, "reasoning_content": None}}]}
         return _reply("【描述】第二次成功")
 
-    monkeypatch.setattr("vlm.api_call", fake_api_call)
+    monkeypatch.setattr("vlm.mimo_video_api_call", fake_api_call)
 
     analyses = analyze_scenes(ONE_SCENE, frames, tmp_path)
 
@@ -210,7 +210,7 @@ def test_retry_text_keeps_frame_timestamp_header(monkeypatch, tmp_path):
         retry_texts.append(payload["messages"][0]["content"][-1]["text"])
         return _reply("")  # always empty -> exhaust the 3 attempts to observe retry payloads
 
-    monkeypatch.setattr("vlm.api_call", fake_api_call)
+    monkeypatch.setattr("vlm.mimo_video_api_call", fake_api_call)
 
     with pytest.raises(RuntimeError, match="VLM 分析失败"):
         analyze_scenes(ONE_SCENE, frames, tmp_path)
@@ -235,7 +235,7 @@ def test_retry_text_keeps_frame_timestamp_header(monkeypatch, tmp_path):
 def test_scene_failure_does_not_write_placeholder_cache(monkeypatch, tmp_path, api_call):
     """Transient failures and all-empty responses fail the stage instead of caching placeholders."""
     frames = _scene_setup(monkeypatch, tmp_path)
-    monkeypatch.setattr("vlm.api_call", api_call)
+    monkeypatch.setattr("vlm.mimo_video_api_call", api_call)
 
     with pytest.raises(RuntimeError, match="VLM 分析失败"):
         analyze_scenes(ONE_SCENE, frames, tmp_path)

@@ -260,6 +260,8 @@ def _continuation_command(video, work_dir, args):
     if uses_narration(args):
         if args.mimo_tts_voice and "mimo_tts_voice" not in bound:
             parts += ["--mimo-tts-voice", args.mimo_tts_voice]
+        if getattr(args, "edge_tts_voice", None) and "edge_tts_voice" not in bound:
+            parts += ["--edge-tts-voice", args.edge_tts_voice]
         if args.tts_provider != "auto" and "tts_provider" not in bound:
             parts += ["--tts-provider", args.tts_provider]
         if args.voice_ref and "voice_ref" not in bound:
@@ -324,6 +326,8 @@ def _understand_args_for_source(source_record, source_work_dir, args):
         uargs += ["--target-duration", args.target_duration]
     if args.skip_asr:
         uargs.append("--skip-asr")
+    if getattr(args, "asr_provider", "auto") != "auto":
+        uargs += ["--asr-provider", args.asr_provider]
     if args.mimo_video_overview:
         uargs.append("--mimo-video-overview")
     uargs.append("--consolidate" if args.consolidate else "--no-consolidate")

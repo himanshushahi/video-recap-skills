@@ -25,6 +25,7 @@ DEFAULT_MIMO_TTS_MODEL = "mimo-v2.5-tts"  # text-to-speech
 DEFAULT_FISH_TTS_API_URL = "https://api.fish.audio/v1/tts"
 DEFAULT_FISH_TTS_MODEL = "s2.1-pro-free"
 DEFAULT_FISH_TTS_REFERENCE_ID = "5653cea4ac83480aaf2bf45406556185"
+DEFAULT_EDGE_TTS_VOICE = "hi-IN-SwaraNeural"
 
 
 def normalize_api_url(raw_url):
@@ -38,6 +39,11 @@ def normalize_api_url(raw_url):
 def is_mimo_token_plan_key(api_key):
     """Return True for Xiaomi MiMo Token Plan keys, which use token-plan base URLs."""
     return api_key.startswith("tp-")
+
+
+def _is_mimo_endpoint(url):
+    """True when a base URL points at Xiaomi MiMo (which needs MiMo-only params)."""
+    return "xiaomimimo.com" in str(url or "").lower()
 
 
 def default_mimo_api_url(is_token_plan):
@@ -98,12 +104,16 @@ def env_bool(name, default=False):
     raise ValueError(f"{name} must be a boolean (1/true/yes/on or 0/false/no/off), got {raw!r}")
 
 
-# Single MiMo credential powers ASR + TTS. The TTS override (MIMO_TTS_API_KEY / MIMO_TTS_API_URL)
-# is optional and falls back to MIMO_API_KEY / MIMO_API_URL. Token-Plan keys (tp-*) auto-route to
-# the Token-Plan cluster base URL; pay-as-you-go keys use api.xiaomimimo.com.
+# Single MiMo credential powers ASR + TTS. Per-capability overrides are optional and fall back
+# to MIMO_API_KEY / MIMO_API_URL. Token-Plan keys (tp-*) auto-route to the Token-Plan cluster.
 _mimo_api_key = os.environ.get("MIMO_API_KEY", "")
+_mimo_asr_api_key = os.environ.get("MIMO_ASR_API_KEY", "") or _mimo_api_key
 _mimo_tts_api_key = os.environ.get("MIMO_TTS_API_KEY", "") or _mimo_api_key
-_raw_api_url = os.environ.get("MIMO_API_URL") or default_mimo_api_url(is_mimo_token_plan_key(_mimo_api_key))
+_raw_mimo_asr_api_url = (
+    os.environ.get("MIMO_ASR_API_URL")
+    or os.environ.get("MIMO_API_URL")
+    or default_mimo_api_url(is_mimo_token_plan_key(_mimo_asr_api_key))
+)
 _raw_mimo_tts_api_url = (
     os.environ.get("MIMO_TTS_API_URL")
     or os.environ.get("MIMO_API_URL")
@@ -111,8 +121,9 @@ _raw_mimo_tts_api_url = (
 )
 
 CONFIG = {
-    "mimo_api_url": normalize_api_url(_raw_api_url),
-    "mimo_api_key": _mimo_api_key,
+    "mimo_asr_api_url": normalize_api_url(_raw_mimo_asr_api_url),
+    "mimo_asr_api_key": _mimo_asr_api_key,
+    "mimo_asr_env_var": "MIMO_ASR_API_KEY" if os.environ.get("MIMO_ASR_API_KEY") else "MIMO_API_KEY",
     "mimo_tts_api_url": normalize_api_url(_raw_mimo_tts_api_url),
     "mimo_tts_api_key": _mimo_tts_api_key,
     "mimo_tts_env_var": "MIMO_TTS_API_KEY" if os.environ.get("MIMO_TTS_API_KEY") else "MIMO_API_KEY",
@@ -132,6 +143,8 @@ CONFIG = {
     "fish_tts_reference_id": os.environ.get(
         "FISH_TTS_REFERENCE_ID", DEFAULT_FISH_TTS_REFERENCE_ID
     ).strip(),
+    "edge_tts_voice": os.environ.get("EDGE_TTS_VOICE", DEFAULT_EDGE_TTS_VOICE).strip(),
+    "edge_tts_voice_source": "env" if os.environ.get("EDGE_TTS_VOICE") else "default",
     "mimo_disable_thinking": env_bool("MIMO_DISABLE_THINKING", True),
     "breath_ms": 250,  # 段间呼吸空间(ms)；block recap 块内连贯、块间留原声呼吸
     "narration_speed": env_float("NARRATION_SPEED", 1.15, minimum=0.5),  # 解说整体提速(atempo)，默认回到可懂区间；长片可设 1.0
@@ -229,18 +242,22 @@ def _sanitize_api_error(value, limit=500, *, extra_secrets=()):
     return text[:limit]
 
 
-def _prepare_api_payload(payload):
-    """Normalize payload fields for MiMo's OpenAI-compatible chat/completions API."""
+def _prepare_api_payload(payload, api_url=None):
+    """Normalize payload fields for an OpenAI-compatible chat/completions API."""
     normalized = dict(payload)
     if "max_tokens" in normalized and "max_completion_tokens" not in normalized:
-        normalized["max_completion_tokens"] = normalized.pop("max_tokens")
+        normalized["max_completion_tokens"] = normalized["max_tokens"]
+    elif "max_completion_tokens" in normalized and "max_tokens" not in normalized:
+        normalized["max_tokens"] = normalized["max_completion_tokens"]
     if (
         CONFIG["mimo_disable_thinking"]
+        and _is_mimo_endpoint(api_url or CONFIG.get("mimo_tts_api_url") or "")
         and not normalized["model"].endswith(("-tts", "-asr"))
         and "thinking" not in normalized
     ):
         # MiMo V2.5 may spend small max_completion_tokens budgets on reasoning_content.
         # The recap pipeline needs visible text, so disable thinking unless set explicitly.
+        # Non-MiMo gateways must not receive this MiMo-only field.
         normalized["thinking"] = {"type": "disabled"}
     return normalized
 
@@ -261,9 +278,9 @@ def mimo_asr_api_call(payload):
     return api_call(
         payload,
         max_retries=10,
-        api_url=CONFIG["mimo_api_url"],
-        api_key=CONFIG["mimo_api_key"],
-        api_env_var="MIMO_API_KEY",
+        api_url=CONFIG["mimo_asr_api_url"],
+        api_key=CONFIG["mimo_asr_api_key"],
+        api_env_var=CONFIG["mimo_asr_env_var"],
     )
 
 
@@ -278,8 +295,9 @@ def api_call(payload, *, api_url, api_key, api_env_var, max_retries=8):
         "Content-Type": "application/json",
         "User-Agent": "video-recap/1.0",
         "api-key": api_key,
+        "Authorization": f"Bearer {api_key}",
     }
-    data = json.dumps(_prepare_api_payload(payload)).encode("utf-8")
+    data = json.dumps(_prepare_api_payload(payload, api_url=endpoint)).encode("utf-8")
 
     for attempt in range(max_retries):
         try:

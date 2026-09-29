@@ -36,6 +36,11 @@ def is_mimo_token_plan_key(api_key):
     return str(api_key or "").strip().startswith("tp-")
 
 
+def _is_mimo_endpoint(url):
+    """True when a base URL points at Xiaomi MiMo (which needs MiMo-only params)."""
+    return "xiaomimimo.com" in str(url or "").lower()
+
+
 def default_mimo_api_url(is_token_plan, cluster=None):
     """Pick the correct MiMo base URL for pay-as-you-go vs Token Plan keys.
 
@@ -166,29 +171,40 @@ def _sanitize_api_error(value, limit=500):
     return text[:limit]
 
 def _api_headers(api_provider=None, api_url=None, api_key=None):
-    """Build MiMo auth headers (OpenAI-compatible chat/completions with an api-key header)."""
-    del api_provider, api_url  # MiMo is the only provider; signature kept for call sites
+    """Build auth headers for an OpenAI-compatible chat/completions endpoint.
+
+    Both MiMo's `api-key` header and the standard `Authorization: Bearer` header
+    are sent: MiMo ignores the extra header, while generic OpenAI-compatible
+    gateways require Bearer.
+    """
+    del api_provider, api_url  # kept for call-site compatibility
     key = CONFIG["api_key"] if api_key is None else api_key
     return {
         "Content-Type": "application/json",
         "User-Agent": "video-recap/1.0",
         "api-key": key,
+        "Authorization": f"Bearer {key}",
     }
 
 def _prepare_api_payload(payload, api_provider=None, api_url=None):
-    """Normalize payload fields for MiMo's OpenAI-compatible chat/completions API."""
-    del api_provider, api_url
+    """Normalize payload fields for an OpenAI-compatible chat/completions API."""
+    del api_provider
     normalized = dict(payload)
     if "max_tokens" in normalized and "max_completion_tokens" not in normalized:
-        normalized["max_completion_tokens"] = normalized.pop("max_tokens")
-    model = normalized["model"]
+        normalized["max_completion_tokens"] = normalized["max_tokens"]
+    elif "max_completion_tokens" in normalized and "max_tokens" not in normalized:
+        normalized["max_tokens"] = normalized["max_completion_tokens"]
+    model = str(normalized.get("model") or "")
+    endpoint = str(api_url or CONFIG.get("api_url") or "")
     if (
         CONFIG["mimo_disable_thinking"]
+        and _is_mimo_endpoint(endpoint)
         and not model.endswith(("-tts", "-asr"))
         and "thinking" not in normalized
     ):
         # MiMo V2.5 may spend small max_completion_tokens budgets on reasoning_content.
         # The recap pipeline needs visible text, so disable thinking unless set explicitly.
+        # Non-MiMo gateways must not receive this MiMo-only field.
         normalized["thinking"] = {"type": "disabled"}
     return normalized
 

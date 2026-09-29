@@ -10,13 +10,18 @@ Defaults below are bundle-level defaults unless a note scopes them to a specific
 
 | Concern | Env var / flag | Default | Notes |
 |---|---|---|---|
-| MiMo API key | `MIMO_API_KEY` | — | **required for the default pipeline**; one key drives ASR + VLM + default MiMo TTS. `tp-*` Token-Plan keys auto-route to the cluster base URL; `sk-*` keys support pay-as-you-go without a subscription |
+| MiMo API key | `MIMO_API_KEY` | — | **required for the default pipeline**; one key drives ASR + VLM + default MiMo TTS. `tp-*` Token-Plan keys auto-route to the cluster base URL; `sk-*` keys support pay-as-you-go without a subscription. Any OpenAI-compatible gateway key works once `MIMO_API_URL` points at it |
+| API endpoint override | `MIMO_API_URL` (+ `MIMO_VIDEO_API_URL` / `MIMO_ASR_API_URL` / `MIMO_TTS_API_URL`, and matching `MIMO_VIDEO_API_KEY` / `MIMO_ASR_API_KEY` / `MIMO_TTS_API_KEY`) | MiMo defaults | `MIMO_API_URL` and frame-VLM `MIMO_VIDEO_API_URL` accept OpenAI-compatible chat-completions endpoints (the VLM endpoint must support image inputs); ASR/TTS overrides use provider-specific payloads and need a proxy that translates them. Both `api-key` and `Authorization: Bearer` headers are sent; the MiMo-only `thinking` field is only injected for `*.xiaomimimo.com` hosts |
 | Token-Plan cluster | `MIMO_TOKEN_PLAN_CLUSTER` | `cn` | `cn` / `sgp` / `ams` (only for `tp-*` keys) |
-| VLM / chat model | `MIMO_MODEL` | `mimo-v2.5` | frame VLM + reviewer + consolidate |
+| VLM / chat model | `MIMO_MODEL` | `mimo-v2.5` | frame VLM + reviewer + consolidate; any gateway model id (e.g. `auto`) |
+| ASR provider | `ASR_PROVIDER` / `--asr-provider {auto,mimo-asr,whisper-local}` | `auto` | `auto` prefers local Whisper when `WHISPER_MODEL_DIR` exists, else MiMo |
+| Local Whisper model | `WHISPER_MODEL_DIR` | `<Narrato>/models/whisper/turbo` | faster-whisper/CTranslate2 model dir (must contain `model.bin`); needs `pip install faster-whisper` |
+| Local Whisper runtime | `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` / `WHISPER_LANGUAGE` / `WHISPER_VAD_FILTER` | `auto` / faster-whisper default / `auto` / off | device `auto`/`cpu`/`cuda`; language `auto` = detect per file; VAD filter is opt-in |
 | ASR model | `MIMO_ASR_MODEL` | `mimo-v2.5-asr` | speech-to-text |
 | ASR language | `MIMO_ASR_LANGUAGE` | `auto` | `auto` / `zh` / `en` |
 | ASR window | `ASR_SEGMENT_SECONDS` | `15` | smaller → finer dialogue timestamps (stays under MiMo's 10MB base64 cap) |
-| TTS provider | `TTS_PROVIDER` / `--tts-provider {auto,mimo-tts,fish-audio,index-tts}` | `auto` | `auto` prefers configured MiMo, then Fish Audio, and never picks index-tts; explicit selection is recommended for repeatable runs |
+| TTS provider | `TTS_PROVIDER` / `--tts-provider {auto,mimo-tts,fish-audio,edge-tts,index-tts}` | `auto` | `auto` prefers edge-tts when `EDGE_TTS_VOICE` is explicitly set, then configured MiMo, then Fish Audio, and never picks index-tts; explicit selection is recommended for repeatable runs |
+| Edge TTS voice | `EDGE_TTS_VOICE` / `--edge-tts-voice` | `hi-IN-SwaraNeural` | no API key; needs `pip install edge-tts` + ffmpeg; per-run option overrides the environment/default voice and selects edge-tts; examples: `hi-IN-SwaraNeural` (Hindi), `en-US-AriaNeural` (English), `zh-CN-YunyangNeural` (Chinese). edge-tts is online synthesis-only and cannot transcribe |
 | MiMo TTS model | `MIMO_TTS_MODEL` | `mimo-v2.5-tts` | MiMo provider only |
 | MiMo voice | `MIMO_TTS_VOICE` / `--mimo-tts-voice` | `冰糖` | |
 | Cloned narration voice | `VOICE_REF` / `--voice-ref` | off | MiMo full/cut only; lazily normalize once, then use `mimo-v2.5-tts-voiceclone`; mutually exclusive with `--mimo-tts-voice`; requires authorization and sends the reference to MiMo |

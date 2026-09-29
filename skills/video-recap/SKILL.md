@@ -1,7 +1,7 @@
 ---
 name: video-recap
 description: >
- 从输入视频生成中文解说成片或原声剧情短片。用户提供 .mp4 / .mov / .mkv / .webm，并要求剪辑、添加旁白、
+ 从输入视频生成用户指定语言的电影/剧集解说成片或原声剧情短片。用户提供 .mp4 / .mov / .mkv / .webm，并要求剪辑、添加旁白、
  配音、总结、短剧/电视剧/电影/纪录片/科普解说时使用。负责编排 video-* 技能链：视频理解 →
  Agent 制定故事与视听方案 → 剪辑 → 配音 → 合成。触发词：视频解说、视频旁白、生成解说、
  视频 recap、video recap、voiceover、narration、auto-dub、recap。
@@ -65,6 +65,14 @@ video-assemble 严格验证，recap 只核对子技能绑定记录引用的是�
 
 三种控制模式的定义、REVISION 的修改/冻结规则、创作方法以及 `recap_story_plan.json` / `visual_audio_board.json` / `style_card.json` 的写法，全部按 `video-script` 执行；它会要求先读创作手册。这些文件只记录可审计的当前决定，不增加服务或渲染依赖。
 
+### 输出语言
+
+- 用户明确指定 English、Hindi 或其他语言时，`narration.json` 必须使用该语言；旁白字幕（烧录字幕及 `subtitles.srt/.ass`）跟随旁白语言。不要因示例、ASR 语言或本文件使用中文而把稿件改回中文。
+- 用户未指定时，按用户当前请求的主要语言创作；无法判断时先询问。片名、人物名与关键专有名词保留准确形式，用户要求双语时再制作双语旁白/字幕。
+- 原声留白字幕只抄录实际可听见的源对白并保持源语言，不要自动翻译。只有用户明确要求翻译字幕时才输出译文。
+- 用户指定语言与 TTS 音色应匹配。使用 edge-tts 时按需传 `--edge-tts-voice`，例如 Hindi `hi-IN-SwaraNeural`、English `en-US-AriaNeural`；该参数会选择 edge-tts 并对本次运行生效。声音选择应服从用户明确指定的口音/声音偏好。
+- 成片交付前查看实际字幕渲染；Hindi/其他文字若在所选字体中缺字，选择含对应字形的本机字体（`SUBTITLE_FONT_NAME` / `SUBTITLE_FONT_FILE`）后重渲染。
+
 ## 3. 环境与脚本路径
 
 ```bash
@@ -72,13 +80,13 @@ video-assemble 严格验证，recap 只核对子技能绑定记录引用的是�
 export MIMO_API_KEY=***
 ```
 
-同一个 MiMo key 驱动：
+同一个 MiMo key 驱动默认链路：
 
-- ASR：`mimo-v2.5-asr`
-- VLM：`mimo-v2.5`
+- ASR：`mimo-v2.5-asr`（`ASR_PROVIDER=whisper-local` + `WHISPER_MODEL_DIR` 可切换本地 faster-whisper）
+- VLM：`mimo-v2.5`（`MIMO_API_URL` / `MIMO_MODEL` 可指向任意 OpenAI 兼容网关，如本地 `http://127.0.0.1:31415/v1` + `auto`）
 - TTS：`mimo-v2.5-tts`
 
-TTS 供应商由 `--tts-provider mimo-tts|fish-audio|index-tts`（或 `TTS_PROVIDER`）透传给配音技能；Fish Audio 与自托管 index-tts 各自的环境变量、默认音色和能力限制见该技能。ASR/VLM 始终使用 MiMo。`--doctor` 只做离线配置检查。
+TTS 供应商由 `--tts-provider mimo-tts|fish-audio|edge-tts|index-tts`（或 `TTS_PROVIDER`）透传给配音技能；Fish Audio、自托管 index-tts 与免费 edge-tts 各自的环境变量、默认音色和能力限制见配音技能（edge-tts 无需 key，`EDGE_TTS_VOICE` 默认 `hi-IN-SwaraNeural`）。ASR 提供方由 `--asr-provider auto|mimo-asr|whisper-local`（或 `ASR_PROVIDER`）选择，`auto` 下配好 `WHISPER_MODEL_DIR` 即优先本地。`--doctor` 只做离线配置检查。密钥一律只走环境变量，不写入产物或缓存。
 
 `tp-*` Token Plan 密钥默认使用中国区集群，可用 `MIMO_TOKEN_PLAN_CLUSTER` 覆盖。
 
@@ -203,9 +211,9 @@ python3 scripts/recap.py adopted.mp4 --work-dir packaging_work --audio-mode adop
 `source-mix` 仍会混音和重编码；`cut + adopted-packet-copy` 冻结的是剪后中间片的声音，不是原片的 AAC 包。
 当前严格字幕轨只支持 adopted 模式；其他字幕来源没有因此变成精确对齐。切换声音模式须新工作目录，不得把旧 TTS、QC 或自动生成的解说花字混入本轮原声生产。细节见 `references/audio-routing.md`。
 
-## 5. 英译中原声复刻模式
+## 5. 英译中原声复刻模式（当前仅支持此方向）
 
-`--edit-mode dub` 把英文视频翻译为中文，并用原说话者的克隆音色替换人声；它不是在压低原声上叠加解说。
+`--edit-mode dub` 把英文视频翻译为中文，并用原说话者的克隆音色替换人声；它不是在压低原声上叠加解说。此功能与多语言旁白 recap 不同；目前固定英译中，并依赖 MiMo voice cloning，不能用作 Hindi/English narration provider。
 
 ```bash
 python3 scripts/recap.py <video> --edit-mode dub --work-dir <work_dir>

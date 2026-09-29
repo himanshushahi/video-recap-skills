@@ -7,6 +7,7 @@ MiMo, Fish Audio, or a privately configured Index TTS endpoint.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -20,11 +21,19 @@ from lib import CONFIG
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEGRADED_GROUP = "warnings/degraded"
-TTS_PROVIDERS = ("auto", "mimo-tts", "fish-audio", "index-tts")
+TTS_PROVIDERS = ("auto", "mimo-tts", "fish-audio", "edge-tts", "index-tts")
+ASR_PROVIDERS = ("auto", "mimo-asr", "whisper-local")
 
 
 def _command_path(name: str) -> str | None:
     return shutil.which(name)
+
+
+def _python_module_available(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def _ffmpeg_filters() -> set[str]:
@@ -62,16 +71,46 @@ def ffmpeg_has_subtitles_filter() -> bool:
 
 
 def _asr_status() -> dict[str, object]:
-    configured = bool(CONFIG["mimo_asr_api_key"])
+    provider = (CONFIG.get("asr_provider") or "auto").strip().lower()
+    whisper_dir = Path(str(CONFIG.get("whisper_model_dir") or "")).expanduser()
+    whisper_model_present = whisper_dir.is_dir() and (whisper_dir / "model.bin").exists()
+    whisper_dependency_available = _python_module_available("faster_whisper")
+    if provider not in ASR_PROVIDERS:
+        effective = provider
+        configured = False
+        note = "ASR_PROVIDER must be auto, mimo-asr, or whisper-local."
+    elif provider == "auto":
+        effective = "whisper-local" if whisper_model_present else "mimo-asr"
+        configured = None
+        note = ""
+    else:
+        effective = provider
+    mimo_key = bool(CONFIG["mimo_asr_api_key"])
+    if provider in ASR_PROVIDERS and effective == "whisper-local":
+        configured = whisper_model_present and whisper_dependency_available
+        if not whisper_model_present:
+            note = "Set WHISPER_MODEL_DIR to a faster-whisper model dir containing model.bin, or run with --skip-asr."
+        elif not whisper_dependency_available:
+            note = "Install faster-whisper in this Python environment (pip install faster-whisper), or run with --skip-asr."
+        else:
+            note = "ASR uses the local faster-whisper model."
+    elif provider in ASR_PROVIDERS:
+        configured = mimo_key
+        note = "ASR uses MiMo (mimo-v2.5-asr); set MIMO_API_KEY, or run with --skip-asr."
     return {
         "configured": configured,
         "available": configured,
+        "provider": effective,
+        "requested_provider": provider,
+        "whisper_configured": whisper_model_present,
+        "whisper_dependency_available": whisper_dependency_available,
+        "whisper_model_dir": str(CONFIG.get("whisper_model_dir") or ""),
         "mimo_asr_model": CONFIG["mimo_asr_model"],
         "mimo_asr_api_url": CONFIG["mimo_asr_api_url"],
         "mimo_asr_api_url_source": CONFIG["mimo_asr_api_url_source"],
         "mimo_asr_language": CONFIG["mimo_asr_language"],
         "mimo_asr_env_var": CONFIG["mimo_asr_env_var"],
-        "note": "ASR uses MiMo (mimo-v2.5-asr); set MIMO_API_KEY, or run with --skip-asr.",
+        "note": note,
     }
 
 
@@ -200,6 +239,9 @@ def _build_capability_menu(checks: dict) -> dict[str, list[dict[str, str]]]:
     if tts_provider == "index-tts":
         capability_name = "index_tts_configuration"
         action = "Set valid INDEX_TTS_ENDPOINT and INDEX_TTS_VOICE values before voiceover."
+    elif tts_provider == "edge-tts":
+        capability_name = "edge_tts"
+        action = "Set EDGE_TTS_VOICE and install edge-tts (pip install edge-tts) before voiceover."
     elif tts_provider == "fish-audio":
         capability_name = "fish_audio_tts"
         action = "Set FISH_API_KEY before voiceover."
@@ -218,7 +260,11 @@ def _build_capability_menu(checks: dict) -> dict[str, list[dict[str, str]]]:
                 detail=(
                     tts["validation_scope"]
                     if tts_provider == "index-tts"
-                    else f"Model: {tts['model']}"
+                    else (
+                        f"Voice: {tts['edge_tts_voice']} (source: {tts['edge_tts_voice_source']})"
+                        if tts_provider == "edge-tts"
+                        else f"Model: {tts['model']}"
+                    )
                 ),
             )
         )
@@ -231,18 +277,34 @@ def _build_capability_menu(checks: dict) -> dict[str, list[dict[str, str]]]:
             )
         )
 
-    if asr_ready:
+    if asr["requested_provider"] not in ASR_PROVIDERS:
+        menu["blocked"].append(
+            _capability(
+                "asr_provider_configuration",
+                "ASR provider selection is invalid",
+                action=asr["note"],
+            )
+        )
+    elif asr_ready:
+        asr_capability = (
+            "mimo_asr" if asr["provider"] == "mimo-asr" else "whisper_local_asr"
+        )
         menu["ready"].append(
             _capability(
-                "mimo_asr",
-                "MiMo ASR is configured",
-                detail=f"Language: {asr['mimo_asr_language']}; model: {asr['mimo_asr_model']}",
+                asr_capability,
+                f"{asr['provider']} ASR is configured",
+                detail=f"Language: {asr['mimo_asr_language']}; model: {asr['mimo_asr_model']}"
+                if asr["provider"] == "mimo-asr"
+                else f"Model dir: {asr['whisper_model_dir']}",
             )
         )
     else:
+        asr_capability = (
+            "mimo_asr" if asr["provider"] == "mimo-asr" else "whisper_local_asr"
+        )
         menu[DEGRADED_GROUP].append(
             _capability(
-                "mimo_asr",
+                asr_capability,
                 "ASR is unavailable; run only with --skip-asr",
                 action=asr["note"],
             )
@@ -329,17 +391,26 @@ def build_report(*, tts_provider: str | None = None) -> dict[str, object]:
     requested_tts_provider = tts_provider or CONFIG["tts_provider"]
     effective_tts_provider = requested_tts_provider
     if requested_tts_provider == "auto":
-        effective_tts_provider = (
-            "mimo-tts" if mimo_tts_configured or not fish_tts_configured else "fish-audio"
-        )
+        if CONFIG.get("edge_tts_voice_source") == "env":
+            effective_tts_provider = "edge-tts"
+        else:
+            effective_tts_provider = (
+                "mimo-tts" if mimo_tts_configured or not fish_tts_configured else "fish-audio"
+            )
+    edge_tts_installed = bool(_command_path("edge-tts")) or _python_module_available("edge_tts")
+    edge_tts_configured = bool(CONFIG.get("edge_tts_voice", "").strip()) and edge_tts_installed
     if effective_tts_provider == "fish-audio":
         tts_configured = fish_tts_configured
+    elif effective_tts_provider == "edge-tts":
+        tts_configured = edge_tts_configured
     elif effective_tts_provider == "index-tts":
         tts_configured = index_tts["index_tts_configured"]
     else:
         tts_configured = mimo_tts_configured
     if effective_tts_provider == "fish-audio":
         tts_model = CONFIG["fish_tts_model"]
+    elif effective_tts_provider == "edge-tts":
+        tts_model = "provider-managed"
     elif effective_tts_provider == "index-tts":
         tts_model = "provider-managed"
     else:
@@ -370,6 +441,10 @@ def build_report(*, tts_provider: str | None = None) -> dict[str, object]:
             "fish_tts_model": CONFIG["fish_tts_model"],
             "fish_tts_reference_id_set": bool(CONFIG["fish_tts_reference_id"]),
             "fish_tts_reference_id_source": CONFIG["fish_tts_reference_id_source"],
+            "edge_tts_configured": edge_tts_configured,
+            "edge_tts_installed": edge_tts_installed,
+            "edge_tts_voice": CONFIG.get("edge_tts_voice", ""),
+            "edge_tts_voice_source": CONFIG.get("edge_tts_voice_source", "default"),
             **index_tts,
             "model": tts_model,
             "available": tts_configured,
@@ -414,12 +489,18 @@ def build_report(*, tts_provider: str | None = None) -> dict[str, object]:
             )
         if not index_tts["index_tts_voice_set"]:
             failures.append("INDEX_TTS_VOICE is not set")
+    elif effective_tts_provider == "edge-tts" and not edge_tts_installed:
+        failures.append("edge-tts is selected but not installed in this Python environment")
+    if checks["asr"]["requested_provider"] not in ASR_PROVIDERS:
+        failures.append("ASR_PROVIDER must be one of: " + ", ".join(ASR_PROVIDERS))
     if tools["ffmpeg"] and not tools["ffmpeg_subtitles_filter"]:
         warnings.append("ffmpeg lacks subtitles/libass filter; --burn-subtitles will fail")
     if not checks["api_config"]["api_key_set"]:
-        failures.append("MIMO_API_KEY is not set; the default ASR / VLM path requires MiMo")
+        failures.append("MIMO_API_KEY is not set; the default VLM path requires an API key")
     if not checks["asr"]["available"]:
-        warnings.append("ASR not configured (MIMO_API_KEY); pipeline can run with --skip-asr")
+        warnings.append(
+            f"ASR not configured ({checks['asr']['provider']}); pipeline can run with --skip-asr"
+        )
     return {
         "ok": not failures,
         "repo_root": str(SCRIPT_DIR.parents[2]),
@@ -466,9 +547,11 @@ def _print_human(report: dict) -> None:
     print("\n[asr]")
     print(
         f"{_status_icon(asr['available'], warning=True)} "
-        f"MiMo ASR: {'configured' if asr['available'] else 'not configured'} "
-        f"(key: {asr['mimo_asr_env_var']})"
+        f"{asr['provider']} ASR: {'configured' if asr['available'] else 'not configured'} "
+        f"(requested: {asr['requested_provider']})"
     )
+    if asr["provider"] == "whisper-local" or asr["whisper_configured"]:
+        print(f"✓ Whisper model dir: {asr['whisper_model_dir']}")
     print(f"✓ ASR model: {asr['mimo_asr_model']}")
     print(f"✓ ASR API URL: {asr['mimo_asr_api_url']} (source: {asr['mimo_asr_api_url_source']})")
     print(f"✓ ASR language: {asr['mimo_asr_language']}")
@@ -482,7 +565,12 @@ def _print_human(report: dict) -> None:
         f"{'configured' if tts['available'] else 'not configured'}"
     )
     print(f"✓ TTS model: {tts['model']}")
-    if tts["provider"] == "fish-audio":
+    if tts["provider"] == "edge-tts":
+        print(
+            f"✓ TTS voice: {tts['edge_tts_voice']} "
+            f"(source: {tts['edge_tts_voice_source']})"
+        )
+    elif tts["provider"] == "fish-audio":
         print(
             "✓ TTS voice reference ID: "
             f"{'set' if tts['fish_tts_reference_id_set'] else 'not set'} "

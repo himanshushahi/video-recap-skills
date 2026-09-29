@@ -5,7 +5,7 @@
 <h1 align="center">Video Recap Skills</h1>
 
 <p align="center">
-  <b>把一段或几段视频做成中文解说成片：六个技能装进你正在用的编程 Agent，本地只要 ffmpeg，远程只要一个小米 MiMo key，成片还能一键导成剪映草稿接着改。</b>
+  <b>把一段或几段视频做成用户指定语言的电影解说：六个技能装进你正在用的编程 Agent，本地运行 ffmpeg，并提供可选的剪辑工程交接。</b>
 </p>
 
 <p align="center">
@@ -40,13 +40,13 @@
 
 ## 这是什么
 
-六个技能装进 Claude Code、Codex CLI、OpenCode 或 OpenClaw，你用自然语言给出视频路径和想要的成片，Agent 负责理解画面与对白、
+六个技能装进 Claude Code、Codex CLI、Antigravity CLI（`agy`）、OpenCode 或 OpenClaw，你用自然语言给出视频路径、旁白语言和想要的成片，Agent 负责理解画面与对白、
 决定故事与视听方案、剪辑、写稿、配音、混音和字幕。支持 `.mp4 / .mov / .mkv / .webm`。
 
 - **一个 key，本地只要 ffmpeg。** ASR、VLM、TTS 都走[小米 MiMo](https://platform.xiaomimimo.com)，本地只用 Python 标准库和 `ffmpeg`，不需要 GPU，不需要 `pip install`，也不下载模型。配音可以换成 Fish Audio，只替换配音这一段。
 - **先做创作决定，再分配声音。** Agent 先比较剪辑假设，把观众承诺、POV、戏剧问题和"发生了什么变化"的 beat 写进 `recap_story_plan.json`，再给每一拍指定画面任务和声音归属：旁白只在有明确任务时整块配音，强对白、动作声或沉默可以完整主导一拍。
 - **先剪后配，时间轴天然对齐。** 剪辑模式先把长视频剪成成片，再对着成片写解说；一次可以传多个视频，按 `source_id` 选段剪成一条主线；每个视频的分析沉淀成文件系统素材库，下次直接复用。
-- **成片之外还能继续改。** 多轨时间线 `timeline.json` 可一键导出剪映草稿，原片、解说、BGM、字幕、图片叠层都可编辑；自带一份准确字幕文件就会被当作原声字幕的首选来源。
+- **成片之外还能继续改。** 多轨时间线 `timeline.json` 可导出剪映格式草稿；CapCut 各地区与版本的工程兼容性未逐一验证。稳定交付是 MP4 与 SRT/ASS，可直接导入 CapCut。
 - **每一步都留下可核对的记录。** 旁白 lint、组装 QC、交付 QC 和看片修改日志都是机器可读文件；可选的 MiMo 成片顾问只给建议，缺 key、限流或超时都不会阻断出片。
 
 ## 安装
@@ -303,6 +303,14 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 给 /path/to/video.mp4 做一个中文解说成片。这是《庆余年》第一集，主角是范闲，字幕烧进画面。
 ```
 
+也可以直接指定其他语言和 CapCut 交付：
+
+```text
+Use video-recap to make a Hindi movie explainer from D:\Movies\Movie.mp4. Narrate in natural Hindi, subtitle the narration in Hindi, preserve important original dialogue with source-language captions, and export the MP4 and SRT for CapCut. Use edge-tts voice hi-IN-SwaraNeural.
+```
+
+英语示例：`Make an English movie explainer from D:\Movies\Movie.mp4, with English narration and subtitles, important original dialogue preserved, and MP4 plus SRT ready to import into CapCut. Use voice en-US-AriaNeural.` 生成字幕可能需要支持目标文字系统的本机字体；印地语请检查天城文字形是否正确。
+
 **长视频或多集剪成一条短解说：**
 
 ```text
@@ -354,13 +362,13 @@ flowchart LR
 
 素材库只保存 JSON / Markdown 和索引，不复制原始媒体、不建数据库、不做 embedding；Agent 直接在文件系统里 `grep`。
 
-**合成前后各做一次 MiMo 质量复核，并导出剪映草稿：**
+**合成前后各做一次 MiMo 质量复核，并导出可选剪映格式草稿：**
 
 ```text
-给 /path/to/video.mp4 做解说，合成前和成片后都做 MiMo 质量复核，并导出可继续编辑的剪映草稿。
+给 /path/to/video.mp4 做解说，合成前和成片后都做 MiMo 质量复核，并导出可选的剪映格式草稿，同时保留 MP4 与 SRT 供 CapCut 导入。
 ```
 
-MiMo 复核每个阶段最多一次请求，只给建议，失败也不阻断出片。
+MiMo 复核每个阶段最多一次请求，只给建议，失败也不阻断出片。草稿采用剪映协议格式，未承诺兼容所有国际版 CapCut；跨版本稳定交接请导入 MP4 与 SRT，草稿须在本机应用版本中实际验证。
 
 **让解说字幕贴合原片硬字幕的位置：**
 

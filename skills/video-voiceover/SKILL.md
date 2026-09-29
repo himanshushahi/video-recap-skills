@@ -2,11 +2,11 @@
 name: video-voiceover
 user-invocable: false
 description: >
- 把带时间戳的 narration.json 合成为中文解说音频。使用 MiMo TTS（mimo-v2.5-tts）或
- Fish Audio（s2.1-pro-free）或显式配置的通用 IndexTTS HTTP 服务逐段生成语音，
- 按时间窗动态适配语速并处理响度；输入输出时间线上的旁白，产出 tts_segments 与 tts_meta.json。
- 触发词：配音、语音合成、TTS、解说配音、
- voiceover、text to speech、旁白配音。
+  把带时间戳的 narration.json 合成为解说音频。使用 MiMo TTS（mimo-v2.5-tts）或
+  Fish Audio（s2.1-pro-free）或 edge-tts（免费、无需 key）或显式配置的通用 IndexTTS HTTP 服务逐段生成语音，
+  保留稿件的目标语言，按时间窗动态适配语速并处理响度；输入输出时间线上的旁白，产出 tts_segments 与 tts_meta.json。
+  触发词：配音、语音合成、TTS、解说配音、
+  voiceover、text to speech、旁白配音。
 ---
 
 ## 1. 定位
@@ -23,6 +23,10 @@ export MIMO_API_KEY=***  # 也可使用仅供 TTS 的 MIMO_TTS_API_KEY
 export TTS_PROVIDER=fish-audio
 export FISH_API_KEY=***
 export FISH_TTS_REFERENCE_ID=<voice-model-id>  # 可选；覆盖内置“娱乐扒妹”音色
+
+# 或改用免费的 edge-tts（无需 key，需 pip install edge-tts；默认 Hindi 音色 hi-IN-SwaraNeural）
+export TTS_PROVIDER=edge-tts
+export EDGE_TTS_VOICE=hi-IN-SwaraNeural  # 可选；如 zh-CN-YunyangNeural 中文解说音色
 
 # 或显式选择自托管 index-tts 端点，配置见 references/index-tts.md
 export TTS_PROVIDER=index-tts
@@ -41,12 +45,13 @@ cut 流程先剪后配：`narration.json` 本身就是按剪后成片的输出�
 
 ```bash
 python3 scripts/voiceover.py --work-dir <work_dir> --narration <narration.json> \
-  [--tts-provider auto|mimo-tts|fish-audio|index-tts] \
+  [--tts-provider auto|mimo-tts|fish-audio|edge-tts|index-tts] \
+  [--edge-tts-voice <voice-name>] \
   [--mimo-voice 冰糖 | --voice-ref <reference-audio>] \
   [--preserve-approved-text]
 ```
 
-单独运行且省略 `--narration` 时，默认读取 `work_dir/narration.json`；`--narration` 只用于指定其他路径的同格式稿件。
+单独运行且省略 `--narration` 时，默认读取 `work_dir/narration.json`；`--narration` 只用于指定其他路径的同格式稿件。本技能不翻译或改写 `narration`；旁白稿写成什么语言，就合成什么语言。使用 Edge TTS 时可逐次传 `--edge-tts-voice` 覆盖环境默认音色，例如 `hi-IN-SwaraNeural`（Hindi）或 `en-US-AriaNeural`（English）。
 
 ## 5. 输出契约
 
@@ -71,7 +76,7 @@ python3 scripts/voiceover.py --work-dir <work_dir> --narration <narration.json> 
   `spoken_text` 完整匹配且 WAV 存在非空的缓存才可离线复用。
 - 严格 CLI 在本轮合成前把旧 `tts_meta.json` 按时间戳归档至 `tts_meta.history/`，因此失败时
   当前路径不会继续冒充本轮成功；成功元数据通过同目录临时文件原子替换。
-- `auto` 优先使用已配置的 MiMo，MiMo key 缺失且设置了 `FISH_API_KEY` 时使用 Fish Audio；需要可复现的 provider 选择时显式传 `--tts-provider`。
+- `auto` 优先使用显式配置的 `EDGE_TTS_VOICE`（edge-tts），否则优先使用已配置的 MiMo，MiMo key 缺失且设置了 `FISH_API_KEY` 时使用 Fish Audio；需要可复现的 provider 选择时显式传 `--tts-provider`。
 - 自托管 index-tts 端点只能由 `--tts-provider index-tts` 或 `TTS_PROVIDER=index-tts` 显式选择，`auto`
   永不兜底选择它。协议、请求体、receipt 语义与缓存失效规则见 `references/index-tts.md`。
 - Fish Audio 直接请求 WAV；默认使用“娱乐扒妹”音色（`5653cea4ac83480aaf2bf45406556185`），`FISH_TTS_REFERENCE_ID` 可覆盖。模型、音色 ID、API URL、动态语速或归一化设置变化时会重新生成缓存。当前免费模型无 SLA，受 Fair Use 和官方免费期限约束。
@@ -88,4 +93,4 @@ python3 scripts/voiceover.py --work-dir <work_dir> --narration <narration.json> 
 - 超窗时默认在句界自动缩稿并在 `spoken_text/truncated` 留痕；批准稿加 `--preserve-approved-text`。
 - 不混流、不压低原声、不渲染字幕。
 - 不分析视频，也不选择时间点；只为输入稿件中的既定分段配音。
-- Fish Audio 与 IndexTTS 路径都不接受本地 `--voice-ref`；前者用已创建的 `FISH_TTS_REFERENCE_ID` 选择音色。
+- Fish Audio、edge-tts 与 IndexTTS 路径都不接受本地 `--voice-ref`；Fish Audio 用已创建的 `FISH_TTS_REFERENCE_ID` 选择音色，edge-tts 用 `EDGE_TTS_VOICE` 选择音色。

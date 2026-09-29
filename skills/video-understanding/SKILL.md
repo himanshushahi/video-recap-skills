@@ -36,7 +36,7 @@ description: >
 export MIMO_API_KEY=***
 ```
 
-ASR 使用 `mimo-v2.5-asr`；VLM 使用 `mimo-v2.5`。`--skip-asr` 可跳过对白转写，但完整理解仍需要 `MIMO_API_KEY` 运行 VLM。`--mimo-video-overview` 可开启按场景块的视频概览。
+ASR 默认走本地 Whisper（`ASR_PROVIDER=auto` 时 `WHISPER_MODEL_DIR` 存在即用 faster-whisper），否则走 MiMo `mimo-v2.5-asr`；VLM 默认走 MiMo `mimo-v2.5`，也可把 `MIMO_API_URL` / `MIMO_MODEL` 指向任意 OpenAI 兼容网关（如本地 `http://127.0.0.1:31415/v1` + `auto` 模型）。`--skip-asr` 可跳过对白转写，但完整理解仍需要 VLM 的 API key。`--mimo-video-overview` 可开启按场景块的视频概览（仅 MiMo 端点可用）。
 
 若 `work_dir/background_research.json` 存在，本技能会把剧情梗概和角色名折入 VLM 上下文；`--context` 可补充一条简短提示。
 
@@ -46,7 +46,7 @@ ASR 使用 `mimo-v2.5-asr`；VLM 使用 `mimo-v2.5`。`--skip-asr` 可跳过对�
 
 ```bash
 python3 scripts/understand.py <video> --work-dir <work_dir> \
-  [--context "节目名/角色名"] [--scene-threshold 0.1] [--skip-asr] [--mimo-video-overview] [--force]
+  [--context "节目名/角色名"] [--scene-threshold 0.1] [--skip-asr] [--asr-provider auto|mimo-asr|whisper-local] [--mimo-video-overview] [--force]
 ```
 
 ## 5. 输出契约
@@ -73,5 +73,7 @@ python3 scripts/understand.py <video> --work-dir <work_dir> \
 
 - 不写解说词，也不做解说评分；只负责生成理解索引与创作简报。
 - 不编造信号无法支持的剧情；当 ASR / VLM 过薄时输出素材警告。
-- MiMo ASR 的 `start/end` 是固定分片形成的**粗窗口**，不是词级对齐；空文本只表示原因未知，
-  不能当作已证实静音。`asr_timing_evidence.json` 的状态字段见 `references/data-schema.md`。
+- MiMo ASR 的 `start/end` 是固定分片形成的**粗窗口**，不是词级对齐；本地 Whisper 的 `start/end` 是模型原生分段，
+  精度更高但同样不是词级对齐；空文本只表示原因未知，不能当作已证实静音。
+  `asr_timing_evidence.json` 的状态字段见 `references/data-schema.md`（本地路径为 `AVAILABLE_WHISPER_LOCAL`）。
+- edge-tts 只有合成功能，不能做转写；转写的本地选项只有 Whisper。

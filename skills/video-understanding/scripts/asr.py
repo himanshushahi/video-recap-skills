@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lib import CONFIG
 from lib import log, run_cmd, get_video_duration, mimo_asr_api_call
+from whisper_local import resolve_asr_provider, transcribe_wav_local
 from detect import _audio_meta_path, _write_audio_meta
 from asr_timing_evidence import (
     EVIDENCE_FILENAME,
@@ -86,20 +87,22 @@ def _apply_glossary_corrections(segments, work_dir):
 
 
 def transcribe_audio(video_path, work_dir):
-    """提取音频并用 MiMo ASR 分段转录，通过分段合成时间戳。"""
+    """提取音频并转录：whisper-local（本地 faster-whisper）或 MiMo ASR 分段转录。"""
     work_dir = Path(work_dir)
     asr_file = work_dir / "asr_result.json"
     (work_dir / EVIDENCE_FILENAME).unlink(missing_ok=True)
 
-    if not CONFIG["mimo_asr_api_key"]:
+    provider = resolve_asr_provider()
+    if provider == "mimo-asr" and not CONFIG["mimo_asr_api_key"]:
         key_name = CONFIG["mimo_asr_env_var"]
-        log(f"ASR 跳过：未设置 {key_name}（MiMo ASR 需要；VLM/TTS 也需要同一个 key）。"
+        log(f"ASR 跳过：未设置 {key_name}，且未配置本地 Whisper（WHISPER_MODEL_DIR）。"
             f"如不需要对白可加 --skip-asr")
         asr_file.write_text(json.dumps([], ensure_ascii=False, indent=2), encoding="utf-8")
         write_asr_timing_evidence(
             work_dir, video_path, "UNAVAILABLE_NO_KEY", final_segments=[]
         )
         return []
+    log(f"ASR 提供方: {provider}")
 
     # 提取音频
     audio_wav = work_dir / "audio.wav"
@@ -145,7 +148,13 @@ def transcribe_audio(video_path, work_dir):
 
     segment_length = int(CONFIG["asr_segment_seconds"])
     try:
-        if duration <= segment_length:
+        if provider == "whisper-local":
+            # 本地模型一次转录整个音频：自带内部切分，时间戳是模型原生分段。
+            try:
+                asr_result, _detected_language = transcribe_wav_local(audio_wav)
+            except RuntimeError as exc:
+                raise ASRProviderError(str(exc)) from exc
+        elif duration <= segment_length:
             # 短音频，整段转录
             text = _run_asr(audio_wav)
             asr_result = [{"start": 0.0, "end": round(duration, 2), "text": text}]
@@ -167,7 +176,10 @@ def transcribe_audio(video_path, work_dir):
 
     # 保存
     asr_file.write_text(json.dumps(asr_result, ensure_ascii=False, indent=2), encoding="utf-8")
-    status = "AVAILABLE_COARSE" if any(s["text"] for s in asr_result) else "EMPTY_UNKNOWN"
+    if any(s["text"] for s in asr_result):
+        status = "AVAILABLE_WHISPER_LOCAL" if provider == "whisper-local" else "AVAILABLE_COARSE"
+    else:
+        status = "EMPTY_UNKNOWN"
     write_asr_timing_evidence(
         work_dir,
         video_path,

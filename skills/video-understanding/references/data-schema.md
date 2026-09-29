@@ -78,7 +78,8 @@ ASR 的独立证据 sidecar，不改变 `asr_result.json` 的既有数组结构�
 }
 ```
 
-`status` 可为 `AVAILABLE_COARSE`、`EXPLICITLY_SKIPPED`、`UNAVAILABLE_NO_KEY`、
+`status` 可为 `AVAILABLE_COARSE`（MiMo 固定分片粗窗口）、`AVAILABLE_WHISPER_LOCAL`
+（本地 faster-whisper 模型原生分段）、`EXPLICITLY_SKIPPED`、`UNAVAILABLE_NO_KEY`、
 `UNAVAILABLE_NO_DURATION`、`FAILED_AUDIO_EXTRACTION`、`FAILED_PROVIDER`、`EMPTY_UNKNOWN`
 或 `LEGACY_UNVERIFIED`。`LEGACY_UNVERIFIED` 标记没有旧 sidecar 的兼容缓存，可离线复用但
 `observed_text`/`glossary_modified` 为 `null`，且始终保持 legacy 身份；非 legacy sidecar 记录

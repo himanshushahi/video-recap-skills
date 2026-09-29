@@ -109,7 +109,7 @@ def build_agent_brief(
         f"- Edit mode: {edit_mode}",
         f"- Source video duration: {video_duration:.1f}s",
         f"- Target duration (cut mode): {target_duration}",
-        f"- Effective speech budget: {effective_rate:.2f} Chinese chars/sec after {breath_sec:.2f}s pause allowance",
+        f"- Approximate speech budget: {effective_rate:.2f} internal pacing units/sec after {breath_sec:.2f}s pause allowance; this is not a language-independent character or word limit. Follow the requested narration language and estimate its natural spoken duration.",
     ]
     # Understanding validates evidence before calling; the standalone script skill
     # has no producer dependency and must not invent an available ASR status.

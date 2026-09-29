@@ -65,7 +65,7 @@ FACTUAL_CATEGORIES = {"hallucination", "incomplete"}
 
 COVERAGE_POLICY_VERSION = "coverage_policy_v1"
 
-RUBRIC = """你是中文视频解说的创作复核编辑。依据素材证据和已有创作计划审阅草稿，只指出真实问题，宁缺毋滥：
+RUBRIC = """你是视频解说的创作复核编辑。依据素材证据、用户指定的旁白语言和已有创作计划审阅草稿，只指出真实问题，宁缺毋滥。spoken_language 检查 narration 是否使用用户指定语言及自然口语；不得默认要求中文：
 1. 反幻觉（最重要）：解说里的人物、动作、因果、关系必须由带标签的 evidence 支撑。画面/对白是 timeline evidence（clock=SOURCE 或 OUTPUT）；背景资料/user_context 只能作为 context-only（clock=null）辅助识别/消歧。research-only 不能升级成当前画面强事实；若与 research 一致但画面/对白里看不到，最多 severity=suggestion/category=grounding_risk，不要判 error；只有与全部可得证据矛盾才是 severity=error, category=hallucination，并指出冲突证据。
 2. 导演意图：若提供 recap_story_plan.json，检查草稿是否兑现 viewer promise、POV、dramatic question、情绪路径和 chosen_hypothesis；不要另起一条更“吸睛”但不属于该计划的故事。偏离主线 → no_throughline；承诺不兑现 → promise_mismatch/weak_payoff。
 3. change-based beats：每个 beat 应改变知识、权力、目标、关系、情绪或风险。精简时不能只留下“发生了什么”，还要保住人物动机、接受条件及随后犹豫/行动的必要前提。若一段只重复上一段、删除后什么都不损失，可报 low_information_gain/pacing；不要用固定段数或秒数代替判断。

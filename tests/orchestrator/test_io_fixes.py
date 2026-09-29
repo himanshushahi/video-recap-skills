@@ -243,6 +243,7 @@ def _capability_names(report, group):
 def test_doctor_ok_when_tools_and_mimo_key_present(monkeypatch):
     _tools_present(monkeypatch)
     _all_mimo_keys(monkeypatch)
+    monkeypatch.setitem(doctor.CONFIG, "asr_provider", "mimo-asr")
 
     report = doctor.build_report()
 
@@ -290,6 +291,84 @@ def test_doctor_accepts_fish_audio_as_the_selected_tts_provider(monkeypatch):
     assert report["checks"]["tts"]["provider"] == "fish-audio"
     assert "fish_audio_tts" in _capability_names(report, "ready")
     assert "default_recap_pipeline" in _capability_names(report, "ready")
+
+
+def test_doctor_reports_whisper_local_asr_when_model_dir_present(monkeypatch, tmp_path):
+    _tools_present(monkeypatch)
+    _all_mimo_keys(monkeypatch, "tp-x")
+    model_dir = tmp_path / "turbo"
+    model_dir.mkdir()
+    (model_dir / "model.bin").write_bytes(b"fake-model")
+    monkeypatch.setitem(doctor.CONFIG, "asr_provider", "auto")
+    monkeypatch.setitem(doctor.CONFIG, "whisper_model_dir", str(model_dir))
+    monkeypatch.setattr(doctor, "_python_module_available", lambda _name: True)
+
+    report = doctor.build_report()
+
+    assert report["checks"]["asr"]["provider"] == "whisper-local"
+    assert "whisper_local_asr" in _capability_names(report, "ready")
+
+
+def test_doctor_blocks_whisper_asr_when_dependency_is_missing(monkeypatch, tmp_path):
+    _tools_present(monkeypatch)
+    _all_mimo_keys(monkeypatch, "tp-x")
+    model_dir = tmp_path / "turbo"
+    model_dir.mkdir()
+    (model_dir / "model.bin").write_bytes(b"fake-model")
+    monkeypatch.setitem(doctor.CONFIG, "asr_provider", "whisper-local")
+    monkeypatch.setitem(doctor.CONFIG, "whisper_model_dir", str(model_dir))
+    monkeypatch.setattr(doctor, "_python_module_available", lambda _name: False)
+
+    report = doctor.build_report()
+
+    assert report["checks"]["asr"]["available"] is False
+    assert "faster-whisper" in report["checks"]["asr"]["note"]
+    assert "whisper_local_asr" not in _capability_names(report, "ready")
+
+
+def test_doctor_rejects_invalid_asr_provider(monkeypatch):
+    _tools_present(monkeypatch)
+    _all_mimo_keys(monkeypatch, "tp-x")
+    monkeypatch.setitem(doctor.CONFIG, "asr_provider", "local-whisper")
+
+    report = doctor.build_report()
+
+    assert report["ok"] is False
+    assert "asr_provider_configuration" in _capability_names(report, "blocked")
+
+
+def test_doctor_reports_edge_tts_when_voice_explicit(monkeypatch):
+    _tools_present(monkeypatch)
+    _all_mimo_keys(monkeypatch, "tp-x")
+    monkeypatch.setitem(doctor.CONFIG, "tts_provider", "auto")
+    monkeypatch.setitem(doctor.CONFIG, "edge_tts_voice", "hi-IN-SwaraNeural")
+    monkeypatch.setitem(doctor.CONFIG, "edge_tts_voice_source", "env")
+    monkeypatch.setattr(doctor, "_python_module_available", lambda _name: True)
+
+    report = doctor.build_report()
+
+    assert report["checks"]["tts"]["provider"] == "edge-tts"
+    assert "edge_tts" in _capability_names(report, "ready")
+
+
+def test_doctor_blocks_selected_edge_tts_when_dependency_is_missing(monkeypatch):
+    _tools_present(monkeypatch)
+    _all_mimo_keys(monkeypatch, "tp-x")
+    monkeypatch.setitem(doctor.CONFIG, "tts_provider", "edge-tts")
+    monkeypatch.setitem(doctor.CONFIG, "edge_tts_voice", "hi-IN-SwaraNeural")
+    command_path = doctor._command_path
+    monkeypatch.setattr(
+        doctor,
+        "_command_path",
+        lambda name: None if name == "edge-tts" else command_path(name),
+    )
+    monkeypatch.setattr(doctor, "_python_module_available", lambda _name: False)
+
+    report = doctor.build_report()
+
+    assert report["checks"]["tts"]["available"] is False
+    assert "edge_tts" in _capability_names(report, "blocked")
+    assert any("edge-tts" in failure for failure in report["failures"])
 
 
 def test_doctor_provider_override_does_not_mutate_global_config(monkeypatch):
@@ -341,6 +420,7 @@ def test_doctor_warns_when_asr_unconfigured_but_key_present(monkeypatch):
     """api_key powers VLM/TTS; an empty ASR key is only a warning (use --skip-asr)."""
     _tools_present(monkeypatch)
     _all_mimo_keys(monkeypatch, "tp-x")
+    monkeypatch.setitem(doctor.CONFIG, "asr_provider", "mimo-asr")
     monkeypatch.setitem(doctor.CONFIG, "mimo_asr_api_key", "")
 
     report = doctor.build_report()

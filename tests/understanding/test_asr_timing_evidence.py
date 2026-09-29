@@ -36,6 +36,14 @@ def _read_evidence(work_dir):
     return json.loads((work_dir / EVIDENCE_FILENAME).read_text(encoding="utf-8"))
 
 
+@pytest.fixture(autouse=True)
+def _pin_mimo_asr_provider(monkeypatch):
+    # These tests exercise the MiMo ASR path; auto would resolve whisper-local
+    # on machines with WHISPER_MODEL_DIR configured. Whisper-local has its own
+    # tests below that override this pin.
+    monkeypatch.setitem(asr.CONFIG, "asr_provider", "mimo-asr")
+
+
 def _video(tmp_path, content=b"source-video"):
     path = tmp_path / "source.mp4"
     path.write_bytes(content)
@@ -370,3 +378,109 @@ def test_brief_only_validates_stale_sidecar_and_warns_without_network(
     text = (tmp_path / "agent_narration_brief.md").read_text(encoding="utf-8")
     assert "MISSING_OR_STALE" in text
     assert "must not be treated as verified dialogue boundaries" in text
+
+
+def _use_whisper_local(monkeypatch, fake_segments):
+    """Pin whisper-local with a stubbed faster-whisper transcription."""
+    import whisper_local  # noqa: E402
+
+    monkeypatch.setitem(asr.CONFIG, "asr_provider", "whisper-local")
+    monkeypatch.setattr(
+        asr, "transcribe_wav_local", lambda _wav: (list(fake_segments), "zh")
+    )
+    return whisper_local
+
+
+def test_whisper_local_writes_native_segments_and_evidence(monkeypatch, tmp_path):
+    video = _video(tmp_path)
+    _use_whisper_local(
+        monkeypatch,
+        [
+            {"start": 1.2, "end": 3.4, "text": "你好世界"},
+            {"start": 5.0, "end": 6.5, "text": "第二句"},
+        ],
+    )
+    monkeypatch.setattr(asr, "run_cmd", _successful_extract())
+    monkeypatch.setattr(asr, "get_video_duration", lambda _path: 10.0)
+
+    result = asr.transcribe_audio(video, tmp_path)
+    assert [s["text"] for s in result] == ["你好世界", "第二句"]
+    assert result[0]["start"] == 1.2  # native model timestamps, not coarse windows
+    evidence = _read_evidence(tmp_path)
+    assert evidence["status"] == "AVAILABLE_WHISPER_LOCAL"
+    assert evidence["audio"] == file_identity(tmp_path / "audio.wav")
+    assert validate_asr_timing_evidence(
+        tmp_path / EVIDENCE_FILENAME, video, tmp_path / "asr_result.json"
+    )
+    assert _cache_state_after_meta(tmp_path, video) == "FRESH"
+
+
+def test_whisper_local_empty_is_unknown_not_cached(monkeypatch, tmp_path):
+    video = _video(tmp_path)
+    _use_whisper_local(monkeypatch, [])
+    monkeypatch.setattr(asr, "run_cmd", _successful_extract())
+    monkeypatch.setattr(asr, "get_video_duration", lambda _path: 10.0)
+
+    assert asr.transcribe_audio(video, tmp_path) == []
+    assert _read_evidence(tmp_path)["status"] == "EMPTY_UNKNOWN"
+    assert _cache_state_after_meta(tmp_path, video) == "MISS"
+
+
+def test_whisper_local_failure_writes_failure_evidence(monkeypatch, tmp_path):
+    video = _video(tmp_path)
+    _use_whisper_local(monkeypatch, [])
+
+    def _boom(_wav):
+        raise RuntimeError("faster-whisper crashed")
+
+    monkeypatch.setattr(asr, "transcribe_wav_local", _boom)
+    monkeypatch.setattr(asr, "run_cmd", _successful_extract())
+    monkeypatch.setattr(asr, "get_video_duration", lambda _path: 10.0)
+
+    with pytest.raises(asr.ASRProviderError, match="faster-whisper crashed"):
+        asr.transcribe_audio(video, tmp_path)
+    assert not (tmp_path / "asr_result.json").exists()
+    assert _read_evidence(tmp_path)["status"] == "FAILED_PROVIDER"
+
+
+def test_resolve_asr_provider_auto_is_local_first(monkeypatch, tmp_path):
+    import whisper_local
+
+    model_dir = tmp_path / "turbo"
+    model_dir.mkdir()
+    (model_dir / "model.bin").write_bytes(b"fake")
+    monkeypatch.setitem(asr.CONFIG, "asr_provider", "auto")
+    monkeypatch.setitem(asr.CONFIG, "whisper_model_dir", str(model_dir))
+    assert whisper_local.resolve_asr_provider() == "whisper-local"
+
+    monkeypatch.setitem(asr.CONFIG, "whisper_model_dir", str(tmp_path / "missing"))
+    assert whisper_local.resolve_asr_provider() == "mimo-asr"
+
+    monkeypatch.setitem(asr.CONFIG, "asr_provider", "bogus")
+    with pytest.raises(RuntimeError, match="ASR_PROVIDER"):
+        whisper_local.resolve_asr_provider()
+
+
+def test_asr_cache_tracks_resolved_provider_and_whisper_model_identity(
+    monkeypatch, tmp_path
+):
+    video = _video(tmp_path)
+    model_dir = tmp_path / "turbo"
+    model_dir.mkdir()
+    model_file = model_dir / "model.bin"
+    model_file.write_bytes(b"model-v1")
+    monkeypatch.setitem(asr.CONFIG, "asr_provider", "auto")
+    monkeypatch.setitem(asr.CONFIG, "whisper_model_dir", str(model_dir))
+
+    local_payload = _asr_cache_payload(video)
+    assert local_payload["settings"]["resolved_asr_provider"] == "whisper-local"
+    original_identity = local_payload["settings"]["whisper_model_identity"]
+
+    model_file.write_bytes(b"updated-model-v2")
+    changed_payload = _asr_cache_payload(video)
+    assert changed_payload["settings"]["whisper_model_identity"] != original_identity
+
+    monkeypatch.setitem(asr.CONFIG, "whisper_model_dir", str(tmp_path / "missing"))
+    mimo_payload = _asr_cache_payload(video)
+    assert mimo_payload["settings"]["resolved_asr_provider"] == "mimo-asr"
+    assert mimo_payload["settings"]["whisper_model_identity"] is None
