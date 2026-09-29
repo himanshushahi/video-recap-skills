@@ -86,19 +86,16 @@ def test_skill_frontmatter_exposes_only_the_router_and_writing_skill():
         assert frontmatter.get("user-invocable", True) is expected
 
 
-def test_public_readmes_are_skill_first_and_document_verified_hosts():
-    readmes = {
-        "zh": (ROOT / "README.md").read_text(encoding="utf-8"),
-        "en": (ROOT / "README.en.md").read_text(encoding="utf-8"),
-    }
+def test_primary_readme_is_english_and_documents_supported_hosts():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    for language, text in readmes.items():
-        assert "codex plugin marketplace add zenstory-ai/video-recap-skills" in text, language
-        assert "codex plugin add video-recap-skills@video-recap" in text, language
-        assert "https://opencode.ai/docs/skills/" in text, language
-        assert "opencode debug skill" in text, language
-        assert "python3 skills/video-recap/scripts/recap.py" not in text, language
-        assert "python3 tools/measure_subtitle.py" not in text, language
-
-    assert "用 /path/to/ep1.mp4 和 /path/to/ep2.mp4" in readmes["zh"]
-    assert "Use /path/to/ep1.mp4 and /path/to/ep2.mp4" in readmes["en"]
+    assert not (ROOT / "README.en.md").exists()
+    assert "English, Hindi, or other requested-language" in readme
+    assert "codex plugin marketplace add zenstory-ai/video-recap-skills" in readme
+    assert "codex plugin add video-recap-skills@video-recap" in readme
+    assert "https://opencode.ai/docs/skills/" in readme
+    assert "opencode debug skill" in readme
+    assert "Start with Antigravity or OpenCode" in readme
+    assert "Use video-recap to make a clear, engaging English movie explainer" in readme
+    assert "python3 skills/video-recap/scripts/recap.py" not in readme
+    assert "python3 tools/measure_subtitle.py" not in readme

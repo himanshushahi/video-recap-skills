@@ -5,17 +5,15 @@
 <h1 align="center">Video Recap Skills</h1>
 
 <p align="center">
-  <b>把一段或几段视频做成用户指定语言的电影解说：六个技能装进你正在用的编程 Agent，本地运行 ffmpeg，并提供可选的剪辑工程交接。</b>
+  <b>Turn one or several videos into an English, Hindi, or other requested-language movie explainer: six skills inside the coding agent you already use, ffmpeg locally, and an optional editable draft handoff.</b>
 </p>
 
 <p align="center">
-  <a href="https://zenstory.ai/zh/video-recap"><b>项目主页</b></a>
+  <a href="https://zenstory.ai/video-recap"><b>Project page</b></a>
   &nbsp;·&nbsp;
-  <a href="#安装"><b>安装</b></a>
+  <a href="#install"><b>Install</b></a>
   &nbsp;·&nbsp;
-  <a href="#看看它的输出"><b>看看它的输出</b></a>
-  &nbsp;·&nbsp;
-  <a href="README.en.md"><b>English</b></a>
+  <a href="#see-what-it-produces"><b>See what it produces</b></a>
 </p>
 
 <p align="center">
@@ -34,48 +32,148 @@
 
 <video src="https://github.com/user-attachments/assets/f3c2df0c-6869-4f5b-8f4c-cce70b58b667" controls muted playsinline width="100%"></video>
 
-上面这条 59 秒横屏解说《这一秒过火》，是从四集短剧里选段、剪辑、写稿、配音、混音、包装并经多轮看片修改后的最终交付；
-它的全部创作产物（故事计划、声音分工、旁白、时间线、QC 报告、看片修改记录、Remotion 包装源码）都在
-[examples/guohuo-60s/](examples/guohuo-60s/)，下文的节选全部来自这些文件。
+The 59-second landscape recap above, *Guohuo (这一秒过火)*, is the final delivery after selecting from four episodes of a short drama, cutting, scripting, voicing, mixing, packaging, and several rounds of viewing feedback. Every creative artifact behind it (story plan, sound ownership, narration, timeline, QC reports, revision log, Remotion overlay source) lives in [examples/guohuo-60s/](examples/guohuo-60s/), and every excerpt below is copied from those files.
 
-## 这是什么
+## What it is
 
-六个技能装进 Claude Code、Codex CLI、Antigravity CLI（`agy`）、OpenCode 或 OpenClaw，你用自然语言给出视频路径、旁白语言和想要的成片，Agent 负责理解画面与对白、
-决定故事与视听方案、剪辑、写稿、配音、混音和字幕。支持 `.mp4 / .mov / .mkv / .webm`。
+Six skills install into Claude Code, Codex CLI, Antigravity CLI (`agy`), OpenCode, or OpenClaw. Give the agent video paths, the language for narration/subtitles, and the recap you want in plain language; it understands picture and dialogue, plans the story and sound, cuts, writes, voices, mixes, and subtitles. Supported inputs: `.mp4 / .mov / .mkv / .webm`.
 
-- **一个 key，本地只要 ffmpeg。** ASR、VLM、TTS 都走[小米 MiMo](https://platform.xiaomimimo.com)，本地只用 Python 标准库和 `ffmpeg`，不需要 GPU，不需要 `pip install`，也不下载模型。配音可以换成 Fish Audio，只替换配音这一段。
-- **先做创作决定，再分配声音。** Agent 先比较剪辑假设，把观众承诺、POV、戏剧问题和"发生了什么变化"的 beat 写进 `recap_story_plan.json`，再给每一拍指定画面任务和声音归属：旁白只在有明确任务时整块配音，强对白、动作声或沉默可以完整主导一拍。
-- **先剪后配，时间轴天然对齐。** 剪辑模式先把长视频剪成成片，再对着成片写解说；一次可以传多个视频，按 `source_id` 选段剪成一条主线；每个视频的分析沉淀成文件系统素材库，下次直接复用。
-- **成片之外还能继续改。** 多轨时间线 `timeline.json` 可导出剪映格式草稿；CapCut 各地区与版本的工程兼容性未逐一验证。稳定交付是 MP4 与 SRT/ASS，可直接导入 CapCut。
-- **每一步都留下可核对的记录。** 旁白 lint、组装 QC、交付 QC 和看片修改日志都是机器可读文件；可选的 MiMo 成片顾问只给建议，缺 key、限流或超时都不会阻断出片。
+- **Provider choices without changing the workflow.** VLM/chat defaults to [Xiaomi MiMo](https://platform.xiaomimimo.com) and also accepts an OpenAI-compatible gateway. ASR prefers local faster-whisper when its configured model directory exists, otherwise it uses MiMo; narration defaults to MiMo and can switch to edge-tts or Fish Audio. `ffmpeg` runs locally. Whisper and edge-tts are optional installs; edge-tts needs an internet connection.
+- **The editorial decision comes before the sound allocation.** The agent compares edit hypotheses first, writes the viewer promise, POV, dramatic question, and change-based beats into `recap_story_plan.json`, then assigns each beat a picture job and an audio owner: narration is voiced as a block only when it has a defined job, and strong dialogue, action sound, or silence may own an entire beat.
+- **Cut first, narrate second, so the timeline is aligned by construction.** Cut mode renders the shortened video first and writes narration against that output timeline; feed several videos at once and pick ranges by `source_id` to cut one story spine; each video's analysis is saved to a filesystem material library for reuse.
+- **Keep editing after the render.** The multi-track `timeline.json` can export to a JianYing-format draft with editable source clips, narration, BGM, subtitles, and image overlays. CapCut compatibility varies by app/version; the guaranteed handoff is the rendered MP4 plus `subtitles.srt/.ass`, which you can import into CapCut.
+- **Every step leaves a record you can check.** Narration lint, assembly QC, delivery QC, and the revision log are machine-readable files; the optional MiMo adviser only suggests, and a missing key, rate limit, or timeout never blocks the render.
 
-## 安装
+## Install
 
-前提：Python 3.10 或更新版本，`PATH` 上有带 libass 的 `ffmpeg`（默认烧录字幕），以及一个[小米 MiMo](https://platform.xiaomimimo.com) API Key。
+Prerequisites: Python 3.10 or newer, `ffmpeg` with libass on `PATH` (subtitles are burned in by default), and an API key for the selected VLM/ASR/TTS services. For the default cloud setup, use a [Xiaomi MiMo](https://platform.xiaomimimo.com) API key.
 
 ```bash
-brew install ffmpeg                        # macOS；Debian/Ubuntu 用 apt，Windows 用 choco / scoop / winget
-export MIMO_API_KEY=your-mimo-key          # Windows PowerShell：$env:MIMO_API_KEY="your-mimo-key"
-export MIMO_TOKEN_PLAN_CLUSTER=cn          # 仅 tp-* Token Plan key 需要：cn | sgp | ams
+brew install ffmpeg                        # macOS; apt on Debian/Ubuntu, choco / scoop / winget on Windows
+export MIMO_API_KEY=your-mimo-key          # Windows PowerShell: $env:MIMO_API_KEY="your-mimo-key"
+export MIMO_TOKEN_PLAN_CLUSTER=cn          # tp-* Token Plan keys only: cn | sgp | ams
 ```
 
-MiMo 不需要订阅，`sk-*` key 按量付费；本项目实测一条完整视频约 1.3 元，费用随视频时长和调用量变化。
+MiMo needs no subscription; `sk-*` keys bill pay-as-you-go. One complete video measured for this project cost about CNY 1.3, varying with length and request volume.
 
-在 Claude Code 里执行：
+Inside Claude Code:
 
 ```text
 /plugin marketplace add zenstory-ai/video-recap-skills
 /plugin install video-recap-skills@video-recap
 ```
 
-也可以直接说一句话（支持导入 GitHub 仓库的 Agent 都适用）：
+Or just ask (any agent that can import a GitHub repository):
 
 ```text
-安装这个插件：https://github.com/zenstory-ai/video-recap-skills
+Install this plugin: https://github.com/zenstory-ai/video-recap-skills
 ```
 
+## Start with Antigravity or OpenCode
+
+Follow these steps from a terminal. You do not need to run the project's Python scripts yourself.
+
+### 1. Install the tools
+
+Install Python 3.10+, ffmpeg with libass, and either [Antigravity CLI](https://antigravity.google/docs/skills/) (`agy`) or [OpenCode](https://opencode.ai/docs/skills/). For narration in English or Hindi with Edge TTS, install the optional package into the Python environment used by the skills:
+
+```powershell
+py -m pip install edge-tts
+```
+
+### 2. Download the skills
+
+In PowerShell:
+
+```powershell
+git clone https://github.com/zenstory-ai/video-recap-skills.git
+cd video-recap-skills
+New-Item -ItemType Directory -Force .agents\skills | Out-Null
+Copy-Item skills\* .agents\skills -Recurse -Force
+```
+
+On macOS/Linux, the last two commands are:
+
+```bash
+mkdir -p .agents/skills
+cp -R skills/. .agents/skills/
+```
+
+This copies the six skills to the standard project discovery folder. If you pull updates to the repository later, repeat the copy step. Keep only one copy in an agent's discovery paths to avoid duplicate skill names.
+
+### 3. Configure an API
+
+For the local-proxy + Whisper + Edge TTS setup, install `faster-whisper` in the Python environment used by the agent and make sure your Whisper model directory contains `model.bin`. Then set these values in the same PowerShell terminal where you will start `agy` or OpenCode. Replace the Whisper path with your actual local model directory:
+
+```powershell
+$env:MIMO_API_KEY = "local-proxy-key"
+$env:MIMO_API_URL = "http://127.0.0.1:31415/v1"
+$env:MIMO_VIDEO_API_URL = "http://127.0.0.1:31415/v1"
+$env:MIMO_MODEL = "auto"
+$env:ASR_PROVIDER = "whisper-local"
+$env:WHISPER_MODEL_DIR = "C:\Models\whisper-large-v3-turbo"
+$env:WHISPER_LANGUAGE = "auto"
+$env:TTS_PROVIDER = "edge-tts"
+$env:EDGE_TTS_VOICE = "hi-IN-SwaraNeural"
+```
+
+`MIMO_API_URL` and `MIMO_VIDEO_API_URL` are base URLs; the client appends `/chat/completions`. The proxy must accept OpenAI-compatible chat completions with image input, and `MIMO_MODEL` must be a model name your proxy recognizes. The proxy key can be any non-empty value if the local server does not authenticate. ASR is explicitly local Whisper and TTS is explicitly Edge TTS here, so MiMo ASR/TTS model names and URLs are not used. Edge TTS is an online speech service and needs internet access. `WHISPER_LANGUAGE=auto` lets Whisper detect the source language; set a language code only when you want to force it.
+
+Whisper transcribes source audio; it does not generate the complete subtitle track by itself. The agent writes narration in your requested language, narration subtitles are generated from that script, and ASR/source-dialogue captions are used for original audio gaps when available and reviewed. For Hindi/Devanagari subtitles, inspect the rendered glyphs and set `SUBTITLE_FONT_NAME` or `SUBTITLE_FONT_FILE` if the default font lacks characters.
+
+If you prefer cloud-only MiMo instead, use a MiMo key and the built-in defaults: pay-as-you-go endpoint `https://api.xiaomimimo.com/v1`, VLM model `mimo-v2.5`, ASR model `mimo-v2.5-asr`, and TTS model `mimo-v2.5-tts`. Set `$env:ASR_PROVIDER = "mimo-asr"` and `$env:TTS_PROVIDER = "mimo-tts"` to force those cloud providers. Token Plan `tp-*` keys route automatically to the configured cluster (`MIMO_TOKEN_PLAN_CLUSTER`, default `cn`); do not set the pay-as-you-go URL for those keys. See the [configuration playbook](skills/video-recap/references/config-playbook.md) for per-stage URL overrides.
+
+Keep all real credentials in environment variables, not in project files.
+
+### 4. Start your agent
+
+From the repository folder, run one of:
+
+```powershell
+agy
+```
+
+or:
+
+```powershell
+opencode debug skill
+opencode
+```
+
+For OpenCode, `opencode debug skill` should list `video-recap`, `video-script`, `video-understanding`, `video-cut`, `video-voiceover`, and `video-assemble`. Antigravity discovers the same skills automatically; type `/video-recap` to invoke it directly. In OpenCode, ask for `video-recap` by name or let the agent select it from the available skills.
+
+### 5. Ask for the recap
+
+Give the agent the absolute video path, output language, subtitle preference, voice, and CapCut deliverables. For example:
+
+```text
+Use video-recap to make a Hindi movie explainer from D:\Movies\Movie.mp4.
+Write and narrate in natural Hindi, subtitle the narration in Hindi, and keep
+important original dialogue with captions in its original language. Use Edge
+TTS voice hi-IN-SwaraNeural. Burn in the narration subtitles and deliver the
+MP4 plus SRT so I can import them into CapCut.
+```
+
+English example:
+
+```text
+Use video-recap to make an English movie explainer from D:\Movies\Movie.mp4.
+Write and narrate in natural English, subtitle the narration in English, and
+keep important original dialogue with captions in its original language. Use
+Edge TTS voice en-US-AriaNeural. Burn in the narration subtitles and deliver
+the MP4 plus SRT so I can import them into CapCut.
+```
+
+You can request another language, accent, or voice by name. Edge TTS is online synthesis and needs internet access. For other narration providers, see the provider options below.
+
+### 6. Let the agent finish the staged workflow
+
+The recap is staged so the agent can inspect the video and make grounded edit decisions. It may first analyze the source or create a clip plan; the agent should then write the required plan/narration artifacts and continue by rerunning the same workflow. If it stops at a handoff, tell it: `Continue the video-recap workflow. Read the handoff instructions, create the required artifacts, and resume the same run until the MP4 and subtitles are produced. Do not ask me to run Python scripts.` Cut mode has an additional cut-first stage before narration is written.
+
+When complete, look for `recap_<name>.mp4` and `subtitles.srt` / `subtitles.ass` in the delivery/work directories. Import the MP4 and SRT into CapCut. The optional `--export-jianying` draft uses JianYing/剪映's project format; it is not guaranteed to open in every international CapCut version, so verify it in your installed app before relying on it. For Devanagari or other non-Latin subtitles, check that the rendered font has all required glyphs; configure `SUBTITLE_FONT_NAME` or `SUBTITLE_FONT_FILE` if needed.
+
 <details>
-<summary><strong>Codex CLI、OpenCode、OpenClaw</strong></summary>
+<summary><strong>Other agent installation paths: Codex CLI and OpenClaw</strong></summary>
 
 **Codex CLI**
 
@@ -84,55 +182,88 @@ codex plugin marketplace add zenstory-ai/video-recap-skills
 codex plugin add video-recap-skills@video-recap
 ```
 
-**OpenCode**：按[官方 Agent Skills 文档](https://opencode.ai/docs/skills/)，项目级技能放在 `.opencode/skills/<name>/SKILL.md`。克隆仓库后从仓库目录启动：
-
-```bash
-git clone https://github.com/zenstory-ai/video-recap-skills.git
-cd video-recap-skills
-mkdir -p .opencode
-ln -s ../skills .opencode/skills             # Windows 把 skills\* 复制到 .opencode\skills\
-opencode debug skill                         # 应列出全部 6 个技能
-```
-
-**OpenClaw**：克隆后导入 Claude 插件包：
+**OpenClaw**: after cloning, import the Claude plugin bundle:
 
 ```bash
 openclaw plugins install ./video-recap-skills
 openclaw skills list
 ```
 
-同一份技能只注册到一个发现目录，否则会重名或重复触发。
+Register the checkout through one discovery path only; duplicates cause name collisions or repeated triggers.
 
 </details>
 
 <details>
-<summary><strong>可选：用 Fish Audio 配音</strong></summary>
+<summary><strong>Local VLM proxy and optional providers</strong></summary>
+
+### Local VLM proxy and optional providers
+
+Set provider variables in the same terminal session used to launch `agy` or `opencode`; the child process running the skills inherits them. Keep credentials in environment variables, not in the repository or generated project files.
+
+For a local OpenAI-compatible proxy, it must accept `POST /v1/chat/completions` with image inputs (`image_url` data URLs). Set the shared endpoint and the video endpoint; the latter is used for frame-by-frame VLM analysis. Use the model identifier expected by your proxy:
+
+```powershell
+$env:MIMO_API_KEY = "your-local-proxy-key"
+$env:MIMO_API_URL = "http://127.0.0.1:31415/v1"
+$env:MIMO_VIDEO_API_URL = "http://127.0.0.1:31415/v1"
+$env:MIMO_MODEL = "auto"
+agy
+```
+
+For OpenCode, launch `opencode` instead of `agy`. On macOS/Linux, use `export MIMO_API_KEY=your-local-proxy-key`, `export MIMO_API_URL=http://127.0.0.1:31415/v1`, `export MIMO_VIDEO_API_URL=http://127.0.0.1:31415/v1`, and `export MIMO_MODEL=auto` before launching the agent. The proxy key can be any non-empty value if your local server does not authenticate. `MIMO_API_URL` is the fallback for chat calls. Separate ASR/TTS endpoint and key overrides are listed in the [configuration playbook](skills/video-recap/references/config-playbook.md), but those paths use provider-specific payloads: a generic OpenAI-compatible proxy must explicitly translate them before it can serve MiMo ASR/TTS. Use local Whisper to avoid remote ASR, and edge-tts or Fish Audio to choose a non-MiMo narration provider.
+
+`--mimo-video-overview` uses MiMo-specific video payloads and is skipped for a generic OpenAI-compatible endpoint. The regular frame-VLM path uses image inputs and is supported when the proxy implements them.
+
+To use local Whisper ASR, install `faster-whisper` in the Python environment used by the agent and point to an existing faster-whisper model directory containing `model.bin`:
+
+```powershell
+py -m pip install faster-whisper
+$env:ASR_PROVIDER = "whisper-local"
+$env:WHISPER_MODEL_DIR = "C:\Models\whisper-large-v3-turbo"
+```
+
+With `ASR_PROVIDER=auto`, that local model is preferred when the configured directory exists; otherwise ASR falls back to MiMo. Set `ASR_PROVIDER=mimo-asr` to force cloud ASR.
+
+To synthesize narration with edge-tts, install its Python package and select a voice. edge-tts does not need an API key, but it is an online speech service, not offline local synthesis:
+
+```powershell
+py -m pip install edge-tts
+$env:TTS_PROVIDER = "edge-tts"
+$env:EDGE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
+```
+
+The default edge-tts voice is `hi-IN-SwaraNeural`; choose a voice matching the narration language. See the [configuration playbook](skills/video-recap/references/config-playbook.md) for Whisper runtime controls, provider precedence, and all environment variables.
+
+</details>
+
+<details>
+<summary><strong>Optional: voice with Fish Audio</strong></summary>
 
 ```bash
 export TTS_PROVIDER=fish-audio
 export FISH_API_KEY=your-fish-key
-export FISH_TTS_REFERENCE_ID=your-voice-model-id  # 可选；默认内置"娱乐扒妹"解说音色
+export FISH_TTS_REFERENCE_ID=your-voice-model-id  # optional; the built-in "娱乐扒妹" narration voice is the default
 ```
 
-默认模型 `s2.1-pro-free`，默认音色"娱乐扒妹"（reference ID `5653cea4ac83480aaf2bf45406556185`），计费以 Fish Audio 官方为准。ASR 和 VLM 仍走 MiMo；本地参考音频克隆（`--voice-ref`）只在 MiMo 路径可用。
+The default model is `s2.1-pro-free` with the built-in "娱乐扒妹" voice (reference ID `5653cea4ac83480aaf2bf45406556185`); billing follows Fish Audio's own terms. Fish Audio changes narration only; your selected ASR and VLM settings remain unchanged (MiMo by default). Local reference-voice cloning (`--voice-ref`) is available on the MiMo path only.
 
 </details>
 
-装好后让 Agent 自检一次：
+Once installed, ask the agent to check the environment:
 
 ```text
-检查 video-recap 的运行环境，告诉我 Python、ffmpeg/libass 和 MiMo 配置是否就绪。
+Check the video-recap environment and tell me whether Python, ffmpeg/libass, the configured VLM endpoint, and the selected ASR/TTS providers are ready.
 ```
 
-> 变更见 [CHANGELOG.md](CHANGELOG.md) 与 [Releases](https://github.com/zenstory-ai/video-recap-skills/releases)。仓库已从 `worldwonderer/video-recap-skills` 迁到 `zenstory-ai/video-recap-skills`，按旧地址安装的用户请重新指向新仓库。
+> Changes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/zenstory-ai/video-recap-skills/releases). The repository moved from `worldwonderer/video-recap-skills` to `zenstory-ai/video-recap-skills`; if you installed from the old address, point at the new one.
 
-## 看看它的输出
+## See what it produces
 
-下面每一段都摘自 [examples/guohuo-60s/](examples/guohuo-60s/) 里的真实文件，省略处用"…"标出。案例的输入是《这一秒过火》第 2、3、6、21 集，仓库只收录结构化产物，不含原剧音视频。
+Every excerpt below is copied from a file in [examples/guohuo-60s/](examples/guohuo-60s/); cuts are marked with "…". The inputs were episodes 2, 3, 6, and 21 of *Guohuo*; the repository holds the structured artifacts only, never the episode audio or video. The files are in Chinese and are quoted as-is, with a translation after each.
 
-### 故事计划先写清"观众承诺"，再写每一拍的变化
+### The story plan states the viewer promise first, then what changes in each beat
 
-Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-60s/recap_story_plan.json)。导演意图是四个问题的答案：承诺什么、跟谁的视角、观众带着什么问题看、什么信息留到最后：
+Before a single cut, the agent writes [`recap_story_plan.json`](examples/guohuo-60s/recap_story_plan.json). The director's intent answers four questions: what is promised, whose point of view, what question the audience watches with, and what is withheld until the end:
 
 ```json
 "director_intent": {
@@ -146,7 +277,9 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 },
 ```
 
-每个 beat 记的不是场景摘要，而是"发生了什么变化"、观众带着哪个问题进来、带着哪个问题出去，以及必须保住的具体时刻和证据来源（10 拍节选 1 拍）：
+Translated: the promise is "in 60 seconds, understand why the lover who came back from the dead breaks the hero in one second, and push the relationship to the wedding-dress send-off through three iconic scenes"; the POV follows Murong Qingyi's realisation; the dramatic question is "if she is pretending to be a stranger, why do her eyes, the kiss, and her protecting him all betray the old love?"; the reveal order is "the sister-in-law identity in the first 8 seconds, the washstand and the shielding in the middle, the wedding dress last".
+
+Each beat records not a scene summary but what changes, which question the audience carries in and out, the exact moment that must be kept, and where the evidence comes from (1 of 10 beats):
 
 ```json
 {
@@ -165,11 +298,13 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 },
 ```
 
-这一拍在 [`clip_plan.json`](examples/guohuo-60s/clip_plan.json) 里变成一条带理由的选段，剪辑模式据此先剪出成片，再写旁白。
+Translated: the event is "he corners her and says he thinks of her day and night and wants to grind her bones to dust"; the change is "power: she evades → he interrogates"; the audience goes in asking "will he hold back?" and comes out with "every harsh word is longing"; the moment that must be kept is the complete original line, evidenced by ASR, VLM, and the burned-in subtitle.
 
-### 旁白让位给原声：谁主导这一拍是写在文件里的
+In [`clip_plan.json`](examples/guohuo-60s/clip_plan.json) this beat becomes one range with a reason; cut mode renders the cut from it first and writes narration afterwards.
 
-[`visual_audio_board.json`](examples/guohuo-60s/visual_audio_board.json) 给每一拍指定 `audio_owner`。上面那一拍由原声主导，旁白任务是 `none`，播放速度锁定 1.0（10 拍节选 1 拍）：
+### Narration yields to original dialogue, and the owner of each beat is written down
+
+[`visual_audio_board.json`](examples/guohuo-60s/visual_audio_board.json) assigns an `audio_owner` to every beat. The beat above is owned by the original dialogue, its narration job is `none`, and its playback speed is locked at 1.0 (1 of 10 beats):
 
 ```json
 {
@@ -191,7 +326,9 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 },
 ```
 
-于是 [`narration.json`](examples/guohuo-60s/narration.json) 全片只有 7 个旁白块，第二块在 10.2 秒停下，第三块到 23.047 秒才进来，中间 13 秒完整留给那句原声：
+Translated: enter "as late as possible, just before the information or action lands"; exit "as soon as the line, action, or reaction has fully landed"; handoff "narration fills in the relationship first, then yields completely while the original sound or action plays; the next beat picks up the character's reaction".
+
+So [`narration.json`](examples/guohuo-60s/narration.json) has only 7 narration blocks in the whole piece. The second stops at 10.2 s and the third does not enter until 23.047 s; the 13 seconds between belong entirely to that line:
 
 ```json
 {
@@ -212,7 +349,9 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 },
 ```
 
-三段被保护的原声由 Agent 校对后写进 [`original_subtitles.json`](examples/guohuo-60s/original_subtitles.json)，在留白处烧成「」字幕：
+Translated: "She renamed herself Fang Mulan and pretends not to know him, but one look confesses the whole affair from three years ago." / "Oh no, the threat hasn't even landed and the next second they're kissing."
+
+The three protected lines, proofread by the agent, go into [`original_subtitles.json`](examples/guohuo-60s/original_subtitles.json) and are burned as 「」 captions in the gaps:
 
 ```json
 [
@@ -222,11 +361,13 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 ]
 ```
 
-组装时 [`timeline.json`](examples/guohuo-60s/timeline.json) 的原声轨在每个旁白块处自动压低、块后恢复；这份时间线就是剪映草稿导出的来源。
+Translated: "Sister-in-law." / "I missed you so much, day and night, I wanted to skin you alive and grind your bones to dust." / "I'm here. Don't be afraid."
 
-### 看片之后怎么改，改了什么、冻结了什么，都有账
+At assembly, the original-audio track in [`timeline.json`](examples/guohuo-60s/timeline.json) is ducked under each narration block and restored after it; this timeline is what the JianYing export reads.
 
-案例经历了四轮修改，每轮在 [`revision-log.json`](examples/guohuo-60s/revision-log.json) 里写成三项：改什么、冻结什么、怎么验证。最后一轮只解冻画面：
+### After viewing: what changed, what was frozen, and how it was verified
+
+The case went through four revision rounds, each written into [`revision-log.json`](examples/guohuo-60s/revision-log.json) as three lists: what to change, what stays frozen, how to verify. The last round unfreezes picture only:
 
 ```json
 {
@@ -252,7 +393,7 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 }
 ```
 
-[`edit-map.json`](examples/guohuo-60s/edit-map.json) 记下 46 秒那处跳接是怎么修的：不是加溶解或闪白遮掩，而是把原片被删掉的 2001–2004 秒那段同一运动补回来：
+[`edit-map.json`](examples/guohuo-60s/edit-map.json) records how the jump near 46 s was repaired: not with a dissolve or a flash frame, but by restoring the 2001–2004 s stretch of the same continuous movement that had been cut out:
 
 ```json
 {
@@ -267,7 +408,7 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 },
 ```
 
-交付前的机械检查写在 [`assembly_qc.json`](examples/guohuo-60s/assembly_qc.json)（响度、字幕溢出、发布门禁）和 [`delivery-qc.json`](examples/guohuo-60s/delivery-qc.json)：
+The mechanical pre-delivery checks are in [`assembly_qc.json`](examples/guohuo-60s/assembly_qc.json) (loudness, subtitle overflow, release gate) and [`delivery-qc.json`](examples/guohuo-60s/delivery-qc.json):
 
 ```json
 "checks": {
@@ -279,58 +420,60 @@ Agent 在剪任何一刀之前先写 [`recap_story_plan.json`](examples/guohuo-6
 }
 ```
 
-旁白里每一句话的事实依据则在 [`content-qc.md`](examples/guohuo-60s/content-qc.md) 逐条对照素材证据和公开资料，并把口语化表达的解释边界写明（9 行节选 1 行）：
+And [`content-qc.md`](examples/guohuo-60s/content-qc.md) checks every narration claim against the footage and public sources, and states the interpretive boundary of each colloquial line (1 of 9 rows):
 
 ```markdown
 | “这一下伪装露馅，男主全懂了” | 挡击动作和“有我在”原声连续证明她仍在意男主 | [爱奇艺官方角色片花](https://www.iqiyi.com/v_r8e40v8g54.html)确认二人重逢后身份错位、爱恨拉扯 | **解释成立，但需限定语义**：“全懂”指看懂她仍在意他，不指此刻才第一次认出她是任素素 |
 ```
 
-### 接着在剪映里改
+Translated: claim "the disguise slips and the hero understands everything"; footage evidence: the shielding action and the "I'm here" line together prove she still cares; web evidence: iQIYI's official character trailer confirms the mistaken identity and push-pull after the reunion; verdict: **the interpretation holds, with a semantic limit**: "understands everything" means he sees she still cares, not that this is the first moment he recognises her as Ren Susu.
 
-加一句"导出剪映草稿"，`timeline.json` 就会写成可编辑的多轨草稿：原片、逐段解说、BGM、字幕和图片叠层各占一轨，素材默认打包进 `Resources/local`，草稿搬到别的机器仍能打开。`ffmpeg` 渲染的 `recap_<名>.mp4` 是最终成片，草稿是给你继续改的。
+### Keep editing in JianYing
 
-<img alt="导出的剪映草稿：原片、解说、BGM、字幕" src="docs/jianying-export.jpg" width="100%">
+Add "export a JianYing draft" to the request and `timeline.json` is written as an editable multi-track draft: source clips, per-segment narration, BGM, subtitles, and image overlays each on their own track, with media bundled under `Resources/local` so the draft still opens on another machine. The `recap_<name>.mp4` that `ffmpeg` renders is the final piece; the draft is for you to keep working on.
 
-导出内容与边界见[剪映草稿导出与成本](docs/capcut-jianying-draft-export.md)。
+<img alt="Exported JianYing draft: source clips, narration, BGM, and subtitles" src="docs/jianying-export.jpg" width="100%">
 
-## 安装后的第一条请求
+Export contents and limits: [JianYing draft export and cost](docs/capcut-jianying-draft-export.md) (Chinese).
 
-复制、改一改就能用。直接给视频路径、期望成片和必要背景，不需要手动运行仓库里的 Python 脚本。
+## Your first request
 
-**完整视频解说：**
+Copy one and adjust it. Give the video path, the recap you want, and any useful story context; you never run the repository's Python scripts by hand.
 
-```text
-给 /path/to/video.mp4 做一个中文解说成片。这是《庆余年》第一集，主角是范闲，字幕烧进画面。
-```
-
-也可以直接指定其他语言和 CapCut 交付：
+**English movie explainer:**
 
 ```text
-Use video-recap to make a Hindi movie explainer from D:\Movies\Movie.mp4. Narrate in natural Hindi, subtitle the narration in Hindi, preserve important original dialogue with source-language captions, and export the MP4 and SRT for CapCut. Use edge-tts voice hi-IN-SwaraNeural.
+Use video-recap to make a clear, engaging English movie explainer from D:\Movies\Movie.mp4. Narrate and subtitle in natural English, preserve important original dialogue, burn in the English narration subtitles, and export the MP4 plus SRT for CapCut. Use edge-tts voice en-US-AriaNeural.
 ```
 
-英语示例：`Make an English movie explainer from D:\Movies\Movie.mp4, with English narration and subtitles, important original dialogue preserved, and MP4 plus SRT ready to import into CapCut. Use voice en-US-AriaNeural.` 生成字幕可能需要支持目标文字系统的本机字体；印地语请检查天城文字形是否正确。
-
-**长视频或多集剪成一条短解说：**
+**Hindi movie recap:**
 
 ```text
-用 /path/to/ep1.mp4 和 /path/to/ep2.mp4 做一个十分钟解说，围绕同一条主线剪辑，保留关键原声和人物反应，不要分成两个小总结。
+Use video-recap to make a Hindi movie recap from D:\Movies\Movie.mp4. Write and narrate in natural Hindi (Devanagari), subtitle the narration in Hindi, keep important original dialogue in its original language with matching subtitles, and export the MP4 plus SRT for CapCut. Use edge-tts voice hi-IN-SwaraNeural.
 ```
 
-**先只做文本交接，不配音不渲染**（把〈占位内容〉换成自己的信息）：
+You can ask for another language or voice/accent in the same way. The agent should follow the requested narration language, choose a matching TTS voice when available, and keep original-dialogue captions in the source language unless you ask for translation. Check the rendered captions for missing glyphs, especially for Devanagari; set `SUBTITLE_FONT_NAME` or `SUBTITLE_FONT_FILE` to a font installed on the rendering machine when needed.
 
-> 我有权使用〈本地视频〉，并提供了对应的已核对画面与对白记录。先只给这段素材的声音分工建议：哪句对白、哪个动作声或停顿应完整保留，哪里确需旁白，依据是哪条记录。缺证据就列待核对项，不补人物动机或没出现的事件。交付分拍说明和必要的旁白草案，不调用配音或渲染。
+**Cut a long video or several episodes into one short recap:**
 
-Agent 会自动完成理解、故事与视听规划、剪辑、写稿、配音和合成。剪辑模式内部会先确定保留片段、生成剪后成片，再按输出时间轴写旁白；这些暂停和续跑也由 Agent 处理。
+```text
+Use /path/to/ep1.mp4 and /path/to/ep2.mp4 to make one ten-minute recap with a shared story spine, keeping key original dialogue and character reactions, not two separate summaries.
+```
 
-## 流程与六个技能
+**Text-only handoff first, no voiceover and no render** (replace the 〈placeholders〉):
+
+> I have permission to use 〈local video〉 and am supplying checked picture and dialogue records for it. Propose only the sound handoff for this material: which full dialogue line, action sound or pause to preserve, where narration is needed, and which record supports each choice. List missing evidence rather than inventing motives or unseen events. Return beat notes and necessary narration drafts without calling TTS or rendering.
+
+The agent handles understanding, story and audiovisual planning, cutting, scripting, voiceover, and assembly. In cut mode it first chooses the footage, renders the shortened video, and only then writes narration on the output timeline; the internal pauses and resumes are the agent's job too.
+
+## Workflow and the six skills
 
 ```mermaid
 flowchart LR
-    video(["视频"]) --> understand["① 理解<br/>场景 · ASR · VLM"]
-    research["背景调研 · 可选"] -.-> understand
-    understand --> script["② 导演 · 剪辑 · 写稿<br/>Agent"] --> voiceover["③ 配音<br/>MiMo / Fish Audio"] --> assemble["④ 组装<br/>混音 · 字幕"] --> output(["Recap"])
-    understand -. 剪辑模式 · 先剪后配 .-> cut["剪辑<br/>先剪成片"] -.-> script
+    video(["Video"]) --> understand["① Understand<br/>scenes · ASR · VLM"]
+    research["Story research · optional"] -.-> understand
+    understand --> script["② Direct · Edit · Script<br/>agent"] --> voiceover["③ Voiceover<br/>MiMo / Fish Audio"] --> assemble["④ Assemble<br/>mix · subtitles"] --> output(["Recap"])
+    understand -. cut mode · cut first .-> cut["Cut<br/>render first"] -.-> script
     classDef io fill:#4f86c6,stroke:#3a6298,color:#fff;
     classDef stage fill:#eef6ff,stroke:#4f86c6,color:#1f2937;
     classDef opt fill:#f3f4f6,stroke:#9ca3af,color:#475569;
@@ -339,129 +482,127 @@ flowchart LR
     class research,cut opt;
 ```
 
-六个技能通过 `work_dir` 里的 JSON / MP4 产物衔接：
+The six skills hand off through the JSON / MP4 artifacts in `work_dir`:
 
-| 技能 | 职责 | 输入 → 输出 |
+| Skill | Responsibility | In → Out |
 |---|---|---|
-| [`video-recap`](skills/video-recap/) | 编排器与环境自检；日常端到端制作用它 | `视频` → `recap_<名>.mp4` |
-| [`video-understanding`](skills/video-understanding/) | 场景检测 · 抽帧 · ASR（`mimo-v2.5-asr`）· VLM（`mimo-v2.5`）· 时间轴融合 · 生成创作 brief | `视频` → `scenes / asr_result / vlm_analysis / silence_periods / timeline_fusion / agent_narration_brief.md` |
-| [`video-script`](skills/video-script/) | 导演 / 故事 / 画面 / 声音方案，解说写作，建议型评审与 lint；只做策划或写稿时单独调用 | `brief + 索引` → `recap_story_plan.json + visual_audio_board.json + [clip_plan.json] + narration.json` |
-| [`video-cut`](skills/video-cut/) | 片段计划 → 拼剪成片；剪辑模式先剪后配，解说按成片时间轴写 | `clip_plan.json + 视频` → `edited_source.mp4` |
-| [`video-voiceover`](skills/video-voiceover/) | 合成解说音频（MiMo `mimo-v2.5-tts` / Fish Audio `s2.1-pro-free`） | `narration.json` → `tts_segments/ + tts_meta.json` |
-| [`video-assemble`](skills/video-assemble/) | 混音 · 压低原声 · 渲染字幕 · 多轨时间线 · 可选导出剪映 | `视频 + tts_meta` → `recap_<名>.mp4 + subtitles.srt/.ass + timeline.json` |
+| [`video-recap`](skills/video-recap/) | Orchestrator and environment doctor; the one to use for everyday end-to-end production | `video` → `recap_<name>.mp4` |
+| [`video-understanding`](skills/video-understanding/) | Scene detection · frame extraction · ASR (MiMo or local faster-whisper) · VLM (MiMo or OpenAI-compatible image gateway) · timeline fusion · creative brief | `video` → `scenes / asr_result / vlm_analysis / silence_periods / timeline_fusion / agent_narration_brief.md` |
+| [`video-script`](skills/video-script/) | Directing / story / picture / sound plan, narration writing, advisory review and lint; call it alone for planning or writing only | `brief + index` → `recap_story_plan.json + visual_audio_board.json + [clip_plan.json] + narration.json` |
+| [`video-cut`](skills/video-cut/) | Clip plan → rendered cut; cut first, narrate second on the output timeline | `clip_plan.json + video` → `edited_source.mp4` |
+| [`video-voiceover`](skills/video-voiceover/) | Synthesise narration audio (MiMo / Fish Audio / edge-tts / IndexTTS) | `narration.json` → `tts_segments/ + tts_meta.json` |
+| [`video-assemble`](skills/video-assemble/) | Mix · duck original audio · render subtitles · multi-track timeline · optional JianYing export | `video + tts_meta` → `recap_<name>.mp4 + subtitles.srt/.ass + timeline.json` |
 
-成片固定输出为 `recap_<名>.mp4`，同时产出 `subtitles.srt/.ass`；全部中间产物在 `work_dir/`，字段契约见[数据结构](skills/video-recap/references/data-schema.md)。
+The recap is always written to `recap_<name>.mp4` alongside `subtitles.srt/.ass`; all intermediate artifacts live in `work_dir/`, with the field contracts in the [data schema](skills/video-recap/references/data-schema.md).
 
-## 进阶请求
+## Advanced requests
 
-**复用已分析过的素材：**
-
-```text
-分析 /path/to/ep1.mp4，并把可复用的理解产物保存到 /path/to/.video-materials；后续制作时优先复用这个素材库。
-```
-
-素材库只保存 JSON / Markdown 和索引，不复制原始媒体、不建数据库、不做 embedding；Agent 直接在文件系统里 `grep`。
-
-**合成前后各做一次 MiMo 质量复核，并导出可选剪映格式草稿：**
+**Reuse previously analysed material:**
 
 ```text
-给 /path/to/video.mp4 做解说，合成前和成片后都做 MiMo 质量复核，并导出可选的剪映格式草稿，同时保留 MP4 与 SRT 供 CapCut 导入。
+Analyze /path/to/ep1.mp4 and save reusable understanding artifacts under /path/to/.video-materials. Prefer that material library in later projects.
 ```
 
-MiMo 复核每个阶段最多一次请求，只给建议，失败也不阻断出片。草稿采用剪映协议格式，未承诺兼容所有国际版 CapCut；跨版本稳定交接请导入 MP4 与 SRT，草稿须在本机应用版本中实际验证。
+The library holds JSON, Markdown, and an index only; it copies no media, builds no database, and uses no embeddings. The agent simply `grep`s the filesystem.
 
-**让解说字幕贴合原片硬字幕的位置：**
+**Run an advisory MiMo review before and after assembly, and export the optional JianYing-format draft:**
 
 ```text
-先检测 /path/to/video.mp4 的原片字幕区域并让我确认预览，再把解说字幕贴到同一区域生成成片。
+Make a Hindi recap of /path/to/video.mp4, run MiMo quality review before assembly and after rendering, and export the optional JianYing-format editable draft as well as the MP4 and SRT for CapCut.
 ```
 
-检测预览保存在 `.subtitle_measure/`；当前要求方形像素视频和底部对齐字幕。
+MiMo review makes at most one request per stage, only suggests, and never blocks the render if it fails. The draft exporter follows the JianYing/Chinese CapCut project format; it is not verified against every international CapCut desktop/mobile version. Use the MP4 and SRT as the portable CapCut handoff, and verify the optional draft in your installed app before relying on it.
 
-**用有授权的参考音色配音：**
+**Align recap subtitles with the source's burned-in subtitle band:**
 
 ```text
-用 /path/to/voice-ref.wav 的音色给 /path/to/video.mp4 做解说；我已获得音色所有者授权。
+Detect the source subtitle band in /path/to/video.mp4 and let me confirm the preview before rendering recap subtitles in the same region.
 ```
 
-参考音频会发送给 MiMo 用于合成，只在获得音色所有者授权时使用。
+The preview is stored under `.subtitle_measure/`; it currently requires square-pixel video and bottom-aligned source subtitles.
 
-**英语视频译成中文并保留原说话人的声音：**
+**Voice with an authorised reference voice:**
 
 ```text
-把 /path/to/english.mp4 翻译成中文配音，保留原说话人的声音。
+Use the voice from /path/to/voice-ref.wav for the recap of /path/to/video.mp4. I have the voice owner's authorization.
 ```
 
-这是替换原始台词而不是叠加解说；当前支持单说话人整轨替换，不分离背景音乐。
+The reference audio is sent to MiMo for synthesis; use it only with the voice owner's authorisation.
 
-**同一个系列复用字幕样式、音色、BGM 与包框：**
+**Dub an English video into Chinese while keeping the speaker's voice:**
 
 ```text
-把 /path/to/library 当作资源库：登记这首 BGM、这个字体和这张包框图，按竖屏 1080x1920 做一版字幕样式模板让我确认采用；
-之后这个系列都用 /path/to/series/recap_project.json 绑定它们来出片。
+Dub /path/to/english.mp4 into Chinese, keeping the original speaker's voice.
 ```
 
-资源、模板和样片是你自己目录里的 JSON 记录，授权与"已采用"状态只由你确认；绑定与显式设置冲突、模板画布与成片不符时，会在配音之前停下。
-每条成片旁边的 `resource_lock.json` 记下这次实际用了哪些资源、授权是否清楚。格式见 [资源库、模板与样片](skills/video-recap/references/resource-library.md)。
+This replaces the original speech rather than overlaying commentary; the current version supports one speaker and full-track replacement without background-music separation.
 
-**在浏览器里看项目、运行和资源库（只读）：**
+**Reuse subtitle style, voice, BGM and frame across a series:**
 
 ```text
-在本机打开剪辑台，看看 /path/to/projects 下面的运行进度、成片和资源库。
+Use /path/to/library as the resource library: register this BGM, this font and this frame image, draft a subtitle-style
+template for 1080x1920 for me to adopt, then render this series with /path/to/series/recap_project.json binding them.
 ```
 
-剪辑台只读、只监听本机地址；需要改动的地方给你一句可以复制回对话的话，不会从页面上发起任何生产。
+Resources, templates and sample films are JSON records in your own directory; licence and "adopted" status are only ever set by you. A binding that conflicts with an explicit setting, or a template whose canvas differs from the output, stops the run before voicing. Each render gets a `resource_lock.json` listing what it actually used and whether the licences are clear. Format: [resource library, templates and samples](skills/video-recap/references/resource-library.md).
 
-<img alt="剪辑台成片视图：播放器与画面、旁白、背景音乐、字幕四轨时间线" src="docs/dashboard-film.png" width="100%">
+**Browse projects, runs and the library in a local page (read-only):**
 
-<img alt="剪辑台模板视图：包装图层与字幕样式的画布示意、带来源标记的参数表" src="docs/dashboard-templates.png" width="100%">
+```text
+Open the local dashboard for /path/to/projects so I can see run progress, finished videos and the library.
+```
 
-**自带原声字幕，让留白处的「」字幕更准：** 把 `user_subtitles.json`（`[{"start": 秒, "end": 秒, "text": "台词"}]`，按成片时间轴；包一层 `{"timeline": "source", "lines": [...]}` 则按原片时间轴自动映射）或 `user_subtitles.srt` / `.ass`（按原片时间轴）放进 `work_dir`。优先级：你的字幕文件 › Agent 校对的 `original_subtitles.json` › ASR 兜底。
+The dashboard is read-only and listens on loopback only; wherever something needs doing it gives you one sentence to paste back into the conversation.
 
-## 常见问题
+<img alt="Dashboard film view: player with picture, narration, BGM and subtitle tracks" src="docs/dashboard-film.png" width="100%">
 
-### 视频本来没有旁白、甚至没有对白，能给它加上新旁白吗？
+<img alt="Dashboard template view: canvas schematics for packaging and subtitle style, parameter table with provenance" src="docs/dashboard-templates.png" width="100%">
 
-可以。理解阶段靠 VLM 看画面，不要求原视频有旁白；素材连对白也没有时，让 Agent 跳过 ASR（`--skip-asr`），按画面生成解说。这是 [issue #79](https://github.com/zenstory-ai/video-recap-skills/issues/79) 问过的问题。
+**Bring your own original-dialogue subtitles for accurate 「」 captions:** put `user_subtitles.json` (`[{"start": s, "end": s, "text": "line"}]` on the output timeline; wrap it as `{"timeline": "source", "lines": [...]}` for source-timeline subs mapped through the clip plan) or `user_subtitles.srt` / `.ass` (source timeline) into `work_dir`. Priority: your file › the agent-proofread `original_subtitles.json` › ASR fallback.
 
-### 长视频跑到一半报 429 或中断了，要从头再来吗？
+## FAQ
 
-不用。VLM 场景分析可断点续传，限流会自愈；写好 `narration.json` 后重复同一条命令即可继续，剪辑模式的剪 / 配进度记录在 `recap_phase.json`，续跑只会接同一个源视频、同一组参数的工作目录。
+### My video has no narration, or even no dialogue. Can it still get a new narration track?
 
-### VLM 认不出谁是谁，解说里全是"黑衣男子"？
+Yes. Understanding relies on the VLM reading the picture and does not require existing narration; when there is no dialogue either, have the agent skip ASR (`--skip-asr`) and narrate from the picture. This was asked in [issue #79](https://github.com/zenstory-ai/video-recap-skills/issues/79).
 
-片名或剧情明确时，先让 Agent 做背景调研写进 `background_research.json`，人物名和关系会折入 VLM 上下文；见[背景调研指南](skills/video-understanding/references/research-guide.md)。
+### A long video hit a 429 or was interrupted halfway. Do I start over?
 
-## 延伸阅读
+No. VLM scene analysis resumes from where it stopped and recovers from rate limits; once `narration.json` is written, repeating the same command continues, cut mode records cut/narrate progress in `recap_phase.json`, and a resume only continues a work directory for the same source video and parameters.
 
-- [视频到解说完整流程](https://zenstory.ai/zh/video-recap/video-to-narration) — 先确认画面、对白与已提供背景，不把猜测写成片中事实
-- [原声与旁白分工](https://zenstory.ai/zh/video-recap/original-audio-and-narration) — 先定每拍声音任务，再写解说词
-- [剪映 / CapCut 草稿导出](https://zenstory.ai/zh/video-recap/capcut-draft) — 用真实 `timeline.json` 独立导出
-- [剪映草稿导出与成本](docs/capcut-jianying-draft-export.md) — 仓库内文档：草稿里有什么、自建与 SaaS 的账单差别
-- [仓库架构](docs/architecture.md) — 仓库内文档：技能分工、功能子包、编排路径与复制模块清单
-- [能力边界与验收原则](docs/production-boundaries.md) — 仓库内文档：哪些交付规则进通用库、哪些属于单个项目；三类验收不能互相冒充
-- [《这一秒过火》案例复现 runbook](examples/guohuo-60s/skill-runbook.md) · [从内容锁定到最终版的决策链](examples/guohuo-60s/iteration-notes.md)
-- 各技能契约：每个 `skills/<skill>/SKILL.md`；[数据结构](skills/video-recap/references/data-schema.md) · [配置手册](skills/video-recap/references/config-playbook.md) · [多轨时间线 / 剪映导出](docs/timeline-and-jianying.md) · [创作剪辑手册](skills/video-script/references/creative-editing-playbook.md)
+### The VLM can't tell who is who and the narration is all "a man in black"?
 
-## 致谢
+When the title or plot is known, have the agent research first and write `background_research.json`; character names and relationships are folded into the VLM context. See the [research guide](skills/video-understanding/references/research-guide.md) (Chinese).
 
-- [LINUX DO - The New Ideal Community](https://linux.do) — 社区支持
-- 剪映草稿协议参考 [pyJianYingDraft](https://github.com/GuanYixuan/pyJianYingDraft)、[capcut-mate](https://github.com/Hommy-master/capcut-mate) 和 [duo-video](https://github.com/duoec/duo-video)
-- 字幕带检测适配自 [ops120/video-recap-skills-plus](https://github.com/ops120/video-recap-skills-plus)
+## Further reading
 
-## 许可
+- [Video-to-narration workflow](https://zenstory.ai/video-recap/video-to-narration) — establish picture, dialogue, and supplied background before treating a claim as a source-video fact
+- [Original sound and narration](https://zenstory.ai/video-recap/original-audio-and-narration) — assign each beat's sound task first, then write the narration
+- [JianYing / CapCut draft export](https://zenstory.ai/video-recap/capcut-draft) — export independently from a real `timeline.json`
+- [JianYing draft export and cost](docs/capcut-jianying-draft-export.md) — in-repo document (Chinese): what is in the draft, and how self-hosting bills differ from SaaS
+- [Production boundaries and acceptance](docs/production-boundaries.md) — in-repo document (Chinese): which delivery rules belong in the shared library and which belong to a single project; the three kinds of acceptance cannot stand in for one another
+- [Guohuo case runbook](examples/guohuo-60s/skill-runbook.md) · [decision chain from content lock to final](examples/guohuo-60s/iteration-notes.md) (both in Chinese)
+- Per-skill contracts in each `skills/<skill>/SKILL.md`; [data schema](skills/video-recap/references/data-schema.md) · [config playbook](skills/video-recap/references/config-playbook.md) · [multi-track timeline / JianYing export](docs/timeline-and-jianying.md) · [creative editing playbook](skills/video-script/references/creative-editing-playbook.md)
 
-MIT，见 [LICENSE](LICENSE)。
+## Acknowledgements
 
-## ZenStory AI 项目
+- [LINUX DO - The New Ideal Community](https://linux.do) — community support
+- The JianYing draft protocol references [pyJianYingDraft](https://github.com/GuanYixuan/pyJianYingDraft), [capcut-mate](https://github.com/Hommy-master/capcut-mate), and [duo-video](https://github.com/duoec/duo-video)
+- Subtitle-band detection adapted from [ops120/video-recap-skills-plus](https://github.com/ops120/video-recap-skills-plus)
 
-本项目由 [ZenStory AI](https://zenstory.ai/zh) 维护——一组开源、面向 agent 的故事创作、改编与生产工具（GitHub 组织：[zenstory-ai](https://github.com/zenstory-ai)）。同组织项目：
+## License
 
-| 项目 | 用途 |
+MIT, see [LICENSE](LICENSE).
+
+## Part of ZenStory AI
+
+This project is maintained by [ZenStory AI](https://zenstory.ai) — open-source, agent-native tools for creating, adapting and producing stories (GitHub org: [zenstory-ai](https://github.com/zenstory-ai)). Sibling projects:
+
+| Project | What it does |
 | --- | --- |
-| [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode) | 网文写作 skill 包：扫榜、拆文、写作、去AI味、封面图 |
-| [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI 短剧 / 漫剧创作 skill 合集：剧本、资产、分镜、图片/视频提示词、独立审查 |
-| [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | 面向原著改编、指定运行环境构建与运行证据 QA 的 agent skills |
-| [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | 将支持的视频文件制作成中文解说，可选导出可编辑的剪映/CapCut 草稿（本仓库） |
-| [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | DeepSeek Harness 社区插件，提供小说、短剧、游戏和视频解说工作台 |
-| [zenstory](https://github.com/zenstory-ai/zenstory) | 对话即创作的 AI 小说写作工作台（[app.zenstory.ai](https://app.zenstory.ai)） |
+| [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode) | Web-fiction writing skill pack: chart scanning, deconstruction, drafting, de-AI-flavor, covers |
+| [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI short-drama / motion-comic suite: scripts, assets, storyboards, image & video prompts, review |
+| [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | Agent skills for source-grounded novel adaptation, target-runtime builds, and evidence-based QA |
+| [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | Create movie explainers in the requested narration language from supported video files, with MP4/subtitle delivery and an optional JianYing-format draft (this repo) |
+| [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | Community DeepSeek Harness plugin with novel, short-drama, game and video-recap workbenches |
+| [zenstory](https://github.com/zenstory-ai/zenstory) | Chat-to-create AI novel-writing workbench ([app.zenstory.ai](https://app.zenstory.ai)) |
