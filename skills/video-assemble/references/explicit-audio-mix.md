@@ -2,11 +2,13 @@
 
 Use this path only when the picture, a completed `prepared_bed_receipt`, an exact
 narration adoption, narration placements/gains, and one fixed master gain have already
-been independently selected. It is still `audio_mode=narration`, but it bypasses the
+been independently selected. It requires an explicit source-consuming profile because
+the adopted prepared bed may contain movie audio. It is still `audio_mode=narration`, but it bypasses the
 legacy narration timing, ducking, ambient BGM, loudness-normalization, and limiter path.
 
 ```bash
 python3 scripts/assemble.py picture.mp4 --work-dir NEW_WORK \
+  --audio-profile source-ducking \
   --tts-meta /local/tts_meta.json \
   --narration-adoption /local/narration_adoption.json \
   --audio-mix-adoption /local/audio_mix_adoption.json
@@ -43,9 +45,6 @@ Each narration snapshot is decoded directly and completely to `pcm_f32le`, 48 kH
 stereo. Version 1 uses one fixed channel matrix, recorded per segment as
 `mono_equal_power` or `stereo_identity`:
 
-- mono is panned to left and right at `1/sqrt(2)` per channel;
-- stereo preserves independent left and right channels at unit gain;
-- inputs with more than two channels are rejected.
 
 There is no intermediate 44.1 kHz mono placement, speed change, fade, trim, tail pad,
 normalization, or automatic fit. Every complete converted WAV must fit its adopted

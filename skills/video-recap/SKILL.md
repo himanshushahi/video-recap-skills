@@ -35,17 +35,21 @@ video-understanding ─▶ Agent 按 video-script 制定方案并写稿 ─▶ [
 所有 full/cut 路径共用同一段收尾：（有旁白时）评审 → TTS → 合成 → 成片 QC。使用原声模式时读
 `references/audio-routing.md`。
 
+`narration` 默认使用 `--audio-profile voiceover-only`：不混入电影原声，配置了 `BGM_PATH` 时由该独立音乐填补旁白间隔。若要保留特定场景的动作声/对白，可显式选择 `--audio-profile source-ducking`（原声与 BGM 间隙 20%、旁白下 5%，至少 3 秒桥接）；`legacy-ducking` 保留旧混音。保留电影声音会增加音频匹配风险，20% 音量也不保证避开平台版权声明；BGM 授权需自行确认。
+
 已有预制画面和本地采用的完整声音三件套时，可走严格 assembly-only 路径：
 
 ```bash
 python3 scripts/recap.py picture.mp4 --edit-mode full --work-dir NEW_WORK \
   --output-dir DELIVERY \
+  --audio-profile source-ducking \
   --tts-meta tts_meta.json \
   --narration-adoption narration_adoption.json \
   --audio-mix-adoption audio_mix_adoption.json
 ```
 
-三个 JSON 参数必须同时出现。该入口只接受单视频、full、narration、音轨 0、新工作目录和未存在的
+三个 JSON 参数必须同时出现，且必须显式指定 `--audio-profile source-ducking` 或
+`legacy-ducking`。该入口只接受单视频、full、narration、音轨 0、新工作目录和未存在的
 交付文件；不运行理解、写稿、解说评审、TTS、cut、MiMo QC 或剪映导出。语义与媒体形状仍由
 video-assemble 严格验证，recap 只核对子技能绑定记录引用的是同一批采用文件与母版路径，不把调用方
 采用的声音或混音声明成自动创作或发布批准。详见 `references/audio-routing.md`。
@@ -86,7 +90,7 @@ export MIMO_API_KEY=***
 - VLM：`mimo-v2.5`（`MIMO_API_URL` / `MIMO_MODEL` 可指向任意 OpenAI 兼容网关，如本地 `http://127.0.0.1:31415/v1` + `auto`）
 - TTS：`mimo-v2.5-tts`
 
-TTS 供应商由 `--tts-provider mimo-tts|fish-audio|edge-tts|index-tts`（或 `TTS_PROVIDER`）透传给配音技能；Fish Audio、自托管 index-tts 与免费 edge-tts 各自的环境变量、默认音色和能力限制见配音技能（edge-tts 无需 key，`EDGE_TTS_VOICE` 默认 `hi-IN-SwaraNeural`）。ASR 提供方由 `--asr-provider auto|mimo-asr|whisper-local`（或 `ASR_PROVIDER`）选择，`auto` 下配好 `WHISPER_MODEL_DIR` 即优先本地。`--doctor` 只做离线配置检查。密钥一律只走环境变量，不写入产物或缓存。
+TTS 供应商由 `--tts-provider mimo-tts|fish-audio|edge-tts|index-tts`（或 `TTS_PROVIDER`）透传给配音技能；Fish Audio、自托管 index-tts 与免费 edge-tts 各自的环境变量、默认音色和能力限制见配音技能（edge-tts 无需 key，`EDGE_TTS_VOICE` 默认 `hi-IN-SwaraNeural`）。ASR 提供方由 `--asr-provider auto|mimo-asr|whisper-local`（或 `ASR_PROVIDER`）选择，`auto` 下配好 `WHISPER_MODEL_DIR` 即优先本地。多音轨可用理解技能的 `--list-audio-tracks` 查看，使用 `--asr-audio-stream-index` 选择对白轨，并用 `--asr-language` 固定语言；这些设置进入续跑清单。`--doctor` 只做离线配置检查。密钥一律只走环境变量，不写入产物或缓存。
 
 `tp-*` Token Plan 密钥默认使用中国区集群，可用 `MIMO_TOKEN_PLAN_CLUSTER` 覆盖。
 

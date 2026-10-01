@@ -12,6 +12,7 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Multi-track, resumable ASR.** Understanding lists source audio streams and requires an explicit `--asr-audio-stream-index` when original/default metadata does not identify one track; `ASR_LANGUAGE` / `--asr-language` pins transcription language, recognized track tags are used when available, and non-empty windows are atomically cached for resume. ASR evidence schema v3 records the selected track and per-window language decisions.
 - **按用户要求生成多语言解说。** recap/script 技能要求旁白与解说字幕遵循用户指定语言，原声字幕保留源语言；recap 新增 `--edge-tts-voice` 逐次选择匹配音色（如 `hi-IN-SwaraNeural` / `en-US-AriaNeural`），并传入 TTS 缓存与续跑命令。
 - **本地 ASR（faster-whisper）。** `ASR_PROVIDER=auto|mimo-asr|whisper-local`（`--asr-provider` 透传）：`auto` 下 `WHISPER_MODEL_DIR` 存在即优先本地转写，否则走 MiMo；本地路径一次转录整个音频，时间戳为模型原生分段，证据状态为 `AVAILABLE_WHISPER_LOCAL`，缓存指纹包含实际提供方、模型设置和 `model.bin` 文件身份。`WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` / `WHISPER_LANGUAGE` / `WHISPER_VAD_FILTER` 可调运行时。
 - **edge-tts 在线配音。** `--tts-provider edge-tts`（无需 API key，需 `pip install edge-tts` + ffmpeg），经 `EDGE_TTS_VOICE` 选音色，默认 `hi-IN-SwaraNeural`；每段缓存带 provider receipt，`doctor` 检查本机依赖。

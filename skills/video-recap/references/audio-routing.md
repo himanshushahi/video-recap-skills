@@ -1,7 +1,9 @@
 # Recap audio routing
 
 `--edit-mode` selects the picture workflow; `--audio-mode` independently
-selects the final audio workflow:
+selects the final audio workflow. `--audio-profile` applies only to narration:
+the default is `voiceover-only`; choose `source-ducking` or `legacy-ducking`
+when movie audio is intentionally included.
 
 | Audio mode | Narration validation/review | TTS | Assemble input |
 | --- | --- | --- | --- |
@@ -23,7 +25,8 @@ exactly this all-or-none bundle:
 --tts-meta PATH --narration-adoption PATH --audio-mix-adoption PATH
 ```
 
-It requires narration mode, stream 0, a new explicit `--work-dir`, and a delivery path
+It requires narration mode, an explicit `--audio-profile source-ducking` or
+`legacy-ducking`, stream 0, a new explicit `--work-dir`, and a delivery path
 that does not already exist. `--output-dir` is optional; when omitted, delivery uses the
 new work directory's parent. The route calls only the video-assemble CLI; it does
 not run understanding, script validation, narration review, voiceover, MiMo QC, cut,

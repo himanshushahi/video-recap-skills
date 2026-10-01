@@ -239,6 +239,8 @@ def _continuation_command(video, work_dir, args):
         parts += ["--edit-mode", args.edit_mode]
     if args.audio_mode != "narration":
         parts += ["--audio-mode", args.audio_mode]
+    if getattr(args, "audio_profile", "voiceover-only") != "voiceover-only":
+        parts += ["--audio-profile", args.audio_profile]
     if args.audio_stream_index != 0:
         parts += ["--audio-stream-index", str(args.audio_stream_index)]
     if args.target_duration:
@@ -328,6 +330,10 @@ def _understand_args_for_source(source_record, source_work_dir, args):
         uargs.append("--skip-asr")
     if getattr(args, "asr_provider", "auto") != "auto":
         uargs += ["--asr-provider", args.asr_provider]
+    asr_stream_index = getattr(args, "asr_audio_stream_index", None)
+    if asr_stream_index is not None:
+        uargs += ["--asr-audio-stream-index", str(asr_stream_index)]
+    uargs += ["--asr-language", getattr(args, "asr_language", "auto")]
     if args.mimo_video_overview:
         uargs.append("--mimo-video-overview")
     uargs.append("--consolidate" if args.consolidate else "--no-consolidate")

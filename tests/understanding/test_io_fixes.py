@@ -73,6 +73,25 @@ def test_run_asr_builds_mimo_payload_and_parses_content(monkeypatch, tmp_path):
     assert audio["input_audio"]["data"].startswith("data:audio/wav;base64,")
 
 
+def test_list_audio_tracks_prints_json_without_creating_workdir(monkeypatch, tmp_path, capsys):
+    video = tmp_path / "movie.mkv"
+    work_dir = tmp_path / "work"
+    track = {"index": 2, "language": "hin"}
+    monkeypatch.setattr(understand, "probe_audio_streams", lambda _video: [track])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["understand.py", str(video), "--work-dir", str(work_dir), "--list-audio-tracks"],
+    )
+
+    understand.main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "video": str(video.resolve()), "streams": [track]
+    }
+    assert not work_dir.exists()
+
+
 def test_run_asr_api_failure_raises_instead_of_silent_empty(monkeypatch, tmp_path):
     """Transient ASR API failures must not become cached empty transcript text."""
     wav = tmp_path / "seg.wav"
@@ -369,7 +388,7 @@ def test_understand_recomputes_asr_when_asr_settings_change(monkeypatch, tmp_pat
     video = _video(tmp_path)
     calls = []
 
-    def fake_asr(video_path, work_dir):
+    def fake_asr(video_path, work_dir, **_kwargs):
         calls.append(understand.CONFIG["asr_segment_seconds"])
         result = [{"start": 0.0, "end": 1.0, "text": f"seg-{calls[-1]}"}]
         (Path(work_dir) / "asr_result.json").write_text(
@@ -401,7 +420,7 @@ def test_understand_recomputes_silence_when_asr_content_changes(monkeypatch, tmp
     calls = []
     asr_payload = {"value": [{"start": 0.0, "end": 1.0, "text": "first"}]}
 
-    def fake_asr(video_path, work_dir):
+    def fake_asr(video_path, work_dir, **_kwargs):
         (Path(work_dir) / "asr_result.json").write_text(
             json.dumps(asr_payload["value"]), encoding="utf-8"
         )

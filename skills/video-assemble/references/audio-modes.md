@@ -1,15 +1,28 @@
 # Assembly audio modes
 
-`assemble.py` keeps `narration` as its API and CLI default. Non-narration
-behavior is opt-in with `--audio-mode`; `--audio-stream-index N` is the
-zero-based audio ordinal used by FFmpeg's `0:a:N` selector.
+`assemble.py` keeps `narration` as its API and CLI default. Its separate
+`--audio-profile` defaults to `voiceover-only`; profiles control whether the
+movie's audio is consumed. Non-narration behavior is opt-in with `--audio-mode`;
+`--audio-stream-index N` is the zero-based audio ordinal used by FFmpeg's
+`0:a:N` selector.
 
 ## `narration`
 
 - Requires non-empty `tts_meta.json` segments, as before.
-- Builds/places narration WAV, performs source ducking and optional BGM mix,
-  then applies the configured final loudness/limiter stage and AAC encoding.
-- Missing source audio may use the existing synthetic-silence fallback.
+- Builds/places narration WAV and applies the configured final loudness/limiter
+  stage and AAC encoding.
+- `voiceover-only` (default) never maps the movie audio stream. Uncovered
+  intervals are silent unless `BGM_PATH` is configured; configured BGM fills
+  those intervals and is ducked under narration with at least a three-second
+  bridge between short narration windows.
+- `source-ducking` explicitly includes movie audio at 20% in narration gaps and
+  5% under narration. Configured BGM uses the same 20% / 5% levels. Both tracks
+  use at least a three-second bridge to reduce rapid level changes.
+- `legacy-ducking` explicitly restores the prior configurable source ducking
+  envelope and gain settings.
+- The selected profile and movie-audio inclusion are recorded in timeline,
+  manifest, and QC. Strict `--audio-mix-adoption` is rejected with the default
+  profile because its prepared bed may contain movie audio.
 - With the additional strict `--audio-mix-adoption`, narration instead consumes an
   adopted prepared bed plus complete direct-to-48-kHz narration placements. This is
   still narration mode, but it bypasses ambient BGM, ducking, speed/fit, loudnorm, and
@@ -54,6 +67,11 @@ is only a version/media-bound timing declaration; its evidence labels and
 `NOT_CHECKED` acoustic/listening status remain authoritative.
 Matching packets and decoder parameters show the encoded audio was copied; they
 do not prove perceptual quality or that a person listened to the result.
+
+`BGM_PATH` is caller-supplied. The assembler does not verify that a track is
+copyright-free or licensed for a particular platform; verify its usage rights
+separately. Muting movie audio reduces soundtrack matching exposure but does
+not guarantee that a platform will not claim the video or other audio.
 
 `timeline.json` represents either non-narration mode as one complete clip from
 the current input video and records the selected stream. Adopted copy uses gain

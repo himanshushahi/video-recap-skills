@@ -1317,6 +1317,31 @@ def test_build_audio_filter_complex_original_blocks_play_full_volume(monkeypatch
     assert _eval_duck_expr(fc, 22.0) == pytest.approx(0.2)
 
 
+def test_source_ducking_profile_uses_quieter_levels_and_longer_bridge(monkeypatch):
+    _duck_config(monkeypatch, duck_bridge_seconds=1.5)
+    fc = _build_audio_filter_complex(
+        [
+            {
+                "actual_place_start": 0.0,
+                "actual_place_end": 1.0,
+                "overlaps_speech": True,
+            },
+            {
+                "actual_place_start": 3.0,
+                "actual_place_end": 4.0,
+                "overlaps_speech": True,
+            },
+        ],
+        has_bgm=True,
+        audio_profile="source-ducking",
+    )
+    assert _eval_duck_expr(fc, 0.0) == pytest.approx(0.05)
+    assert _eval_duck_expr(fc, 2.0) == pytest.approx(0.05)
+    assert "(-0.150)" in fc
+    bgm_part = fc.split("[bgm]")[0]
+    assert "[2:a]volume='max(0,min(1,0.2+(-0.150)" in bgm_part
+
+
 def test_build_audio_filter_complex_bridged_mixed_levels_flatten_to_min(monkeypatch):
     # A bridged span mixing a speech beat (0.2) and a quiet beat (0.12) flattens to the MIN
     # level across the span — matching variable_ducking_keyframes so the 剪映 draft == the mp4.

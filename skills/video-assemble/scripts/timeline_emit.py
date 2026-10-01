@@ -28,6 +28,7 @@ def _timeline_subtitle_segments(tts_segments, work_dir, duration_s):
 
 def _emit_timeline(input_video, tts_segments, work_dir, duration_s, canvas, has_bgm, *,
                    audio_mode="narration", selected_audio_stream=0,
+                   audio_profile="legacy-ducking",
                    explicit_audio_mix=None):
     """Build and persist the backend-neutral multi-track timeline.json."""
     if audio_mode == "narration" and explicit_audio_mix is None:
@@ -77,20 +78,25 @@ def _emit_timeline(input_video, tts_segments, work_dir, duration_s, canvas, has_
     fade = CONFIG["duck_fade_seconds"]
     bgm = None
     if has_bgm and explicit_audio_mix is None:
-        bgm = {"source_path": CONFIG["bgm_path"],
-               "volume": CONFIG["bgm_volume"],
-               "ducking_volume": CONFIG["bgm_ducking_volume"],
-               "fade": fade}
+        source_profile = audio_mode == "narration" and audio_profile == "source-ducking"
+        bgm = {
+            "source_path": CONFIG["bgm_path"],
+            "volume": 0.2 if source_profile else CONFIG["bgm_volume"],
+            "ducking_volume": 0.05 if source_profile else CONFIG["bgm_ducking_volume"],
+            "fade": fade,
+        }
     # carry ducking automation whenever ducking is on at all; even under sidechain
     # mode the draft gets editable volume keyframes (ffmpeg stays the canonical mix)
     ducking = None
     if audio_mode == "narration" and explicit_audio_mix is None \
-            and CONFIG["ducking_mode"] != "none":
-        ducking = {"idle": CONFIG["idle_orig_volume"],
-                   "speech": CONFIG["speech_ducking_volume"],
-                   "quiet": CONFIG["zone_ducking_volume"],
+            and (CONFIG["ducking_mode"] != "none" or audio_profile != "legacy-ducking"):
+        source_profile = audio_profile == "source-ducking"
+        ducking = {"idle": 0.2 if source_profile else CONFIG["idle_orig_volume"],
+                   "speech": 0.05 if source_profile else CONFIG["speech_ducking_volume"],
+                   "quiet": 0.05 if source_profile else CONFIG["zone_ducking_volume"],
                    "fade": fade,
-                   "bridge": CONFIG["duck_bridge_seconds"]}
+                   "bridge": max(CONFIG["duck_bridge_seconds"], 3.0)
+                   if audio_profile != "legacy-ducking" else CONFIG["duck_bridge_seconds"]}
     subtitle_segments = _timeline_subtitle_segments(tts_segments, work_dir, duration_s)
     timeline = build_timeline(canvas, duration_s, video_clips,
                               narration_segments, bgm=bgm, ducking=ducking,
@@ -98,6 +104,27 @@ def _emit_timeline(input_video, tts_segments, work_dir, duration_s, canvas, has_
                               image_segments=packaging.timeline_image_segments(
                                   packaging.load_packaging_layers(work_dir, canvas),
                                   canvas, duration_s))
+    if audio_mode == "narration" and audio_profile == "voiceover-only":
+        for clip in timeline["tracks"][0]["clips"]:
+            clip["audio"].update({
+                "role": "picture_audio_not_consumed",
+                "base_gain": 0.0,
+                "volume_keyframes": [],
+            })
+        timeline["audio_delivery"] = {
+            "mode": audio_mode,
+            "profile": audio_profile,
+            "source_audio_included": False,
+            "bgm_in_gaps": bool(has_bgm),
+        }
+    elif audio_mode == "narration":
+        timeline["audio_delivery"] = {
+            "mode": audio_mode,
+            "profile": audio_profile,
+            "source_audio_included": True,
+            "source_gap_gain": round(float(ducking["idle"]), 4) if ducking else None,
+            "bgm_in_gaps": bool(has_bgm),
+        }
     if explicit_audio_mix is not None:
         for clip in timeline["tracks"][0]["clips"]:
             clip["audio"] = {

@@ -1,9 +1,12 @@
 """Regression contract for explicit non-narration assembly audio modes."""
 
+import array
 import json
+import math
 import shutil
 import subprocess
 import sys
+import wave
 from pathlib import Path
 
 import pytest
@@ -18,6 +21,7 @@ from assembly_settings import assembly_settings_payload  # noqa: E402
 import adoption.frozen_audio as frozen_audio  # noqa: E402
 from adoption.frozen_audio import probe_audio_packets, verify_adopted_audio  # noqa: E402
 from lib import CONFIG  # noqa: E402
+from tts_fixtures import tts_segment  # noqa: E402
 import timeline_emit  # noqa: E402
 
 
@@ -31,12 +35,13 @@ def _run(*args):
     subprocess.run(args, check=True, capture_output=True)
 
 
-def _make_av(path, *, video_seconds=2.0, audio_seconds=None, codec="aac"):
+def _make_av(path, *, video_seconds=2.0, audio_seconds=None, codec="aac",
+              source_frequency=431):
     audio_seconds = video_seconds if audio_seconds is None else audio_seconds
     _run(
         "ffmpeg", "-y", "-loglevel", "error",
         "-f", "lavfi", "-i", f"testsrc2=s=160x120:r=12:d={video_seconds}",
-        "-f", "lavfi", "-i", f"sine=frequency=431:sample_rate=48000:d={audio_seconds}",
+        "-f", "lavfi", "-i", f"sine=frequency={source_frequency}:sample_rate=48000:d={audio_seconds}",
         "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
         "-c:a", codec, str(path),
     )
@@ -52,6 +57,73 @@ def _quiet_visuals(monkeypatch):
 
 def _qc(work):
     return json.loads((work / "assembly_qc.json").read_text(encoding="utf-8"))
+
+
+def _tone_amplitude(samples, frequency, start, duration, sample_rate=48000):
+    first = round(start * sample_rate)
+    last = round((start + duration) * sample_rate)
+    window = samples[first:last]
+    real = sum(value * math.cos(2 * math.pi * frequency * index / sample_rate)
+               for index, value in enumerate(window))
+    imag = sum(value * math.sin(2 * math.pi * frequency * index / sample_rate)
+               for index, value in enumerate(window))
+    return 2 * math.hypot(real, imag) / len(window)
+
+
+@pytest.mark.parametrize(
+    ("audio_profile", "expect_movie_audio"),
+    [("voiceover-only", False), ("source-ducking", True)],
+)
+def test_narration_profiles_control_movie_audio_and_bgm_gaps(
+    tmp_path, monkeypatch, audio_profile, expect_movie_audio
+):
+    _quiet_visuals(monkeypatch)
+    source = tmp_path / "source.mp4"
+    voice = tmp_path / "voice.wav"
+    bgm = tmp_path / "licensed-bgm.wav"
+    work = tmp_path / "work"
+    work.mkdir()
+    _make_av(source, source_frequency=440)
+    _run("ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+         "sine=frequency=1000:sample_rate=48000:d=0.5", "-c:a", "pcm_s16le", voice)
+    _run("ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+         "sine=frequency=1200:sample_rate=48000:d=1", "-c:a", "pcm_s16le", bgm)
+    monkeypatch.setitem(CONFIG, "bgm_path", str(bgm))
+    segment = tts_segment(
+        index=0, start=0.25, end=0.75, narration="test voice",
+        spoken_text="test voice", audio_path=str(voice), audio_duration=0.5,
+        pause_after_ms=0, overlaps_speech=True, tts_rate_offset=0.0,
+    )
+
+    output = assemble_video(
+        source, [segment], work, work / "output.mp4", audio_profile=audio_profile,
+    )
+    decoded = tmp_path / "decoded.wav"
+    _run("ffmpeg", "-y", "-loglevel", "error", "-i", output,
+         "-map", "0:a:0", "-ac", "1", "-ar", "48000", "-c:a", "pcm_s16le", decoded)
+    with wave.open(str(decoded), "rb") as stream:
+        samples = array.array("h", stream.readframes(stream.getnframes()))
+
+    movie_tone = _tone_amplitude(samples, 440, 1.0, 0.5)
+    bgm_tone = _tone_amplitude(samples, 1200, 1.0, 0.5)
+    bgm_under_voice = _tone_amplitude(samples, 1200, 0.3, 0.4)
+    voice_tone = _tone_amplitude(samples, 1000, 0.25, 0.4)
+    qc = _qc(work)
+    assert qc["audio_profile"] == audio_profile
+    assert qc["audio_operations"]["source_audio_included"] is expect_movie_audio
+    assert voice_tone > 100
+    assert bgm_tone > 100
+    assert (movie_tone > 100) is expect_movie_audio
+    expected_bgm_ratio = 0.25 if audio_profile == "source-ducking" else 0.10 / 0.18
+    assert bgm_under_voice / bgm_tone == pytest.approx(expected_bgm_ratio, rel=0.2)
+    timeline = json.loads((work / "timeline.json").read_text(encoding="utf-8"))
+    assert timeline["audio_delivery"]["profile"] == audio_profile
+    video_audio = timeline["tracks"][0]["clips"][0]["audio"]
+    assert video_audio["base_gain"] == (0.2 if expect_movie_audio else 0.0)
+    bgm_track = next(track for track in timeline["tracks"] if track.get("name") == "bgm")
+    assert bgm_track["segments"][0]["gain"] == (
+        0.2 if audio_profile == "source-ducking" else CONFIG["bgm_volume"]
+    )
 
 
 def test_manifest_only_references_current_bound_subtitle_track(tmp_path):
@@ -98,6 +170,9 @@ def test_nondefault_modes_reject_misleading_or_unsupported_arguments(tmp_path, m
     with pytest.raises(RuntimeError, match="非负整数"):
         assemble_video(source, [], work, work / "bool.mp4",
                        audio_mode="adopted-packet-copy", audio_stream_index=True)
+    with pytest.raises(RuntimeError, match="audio_profile.*narration"):
+        assemble_video(source, [], work, work / "profile.mp4",
+                       audio_mode="source-mix", audio_profile="source-ducking")
 
 
 def test_source_mix_declared_missing_bgm_fails_closed(tmp_path, monkeypatch):
@@ -247,6 +322,7 @@ def test_adopted_copy_with_video_reencode_preserves_all_selected_aac_packets(tmp
     assert qc["adopted_audio"]["selected_audio_stream_index"] == 0
     assert qc["audio_operations"] == {
         "narration": False,
+        "source_audio_included": True,
         "source_mix": False,
         "bgm_mix": False,
         "ducking": False,
@@ -334,7 +410,11 @@ def test_adopted_settings_payload_ignores_narration_mix_defaults(tmp_path, monke
     monkeypatch.setitem(CONFIG, "final_loudnorm", not CONFIG["final_loudnorm"])
     second = assembly_settings_payload(tmp_path, audio_mode="adopted-packet-copy", audio_stream_index=0)
     assert first == second
-    assert first["audio"] == {"mode": "adopted-packet-copy", "selected_stream_index": 0}
+    assert first["audio"] == {
+        "mode": "adopted-packet-copy",
+        "profile": None,
+        "selected_stream_index": 0,
+    }
     assert assembly_settings_payload(tmp_path, audio_mode="narration") != first
 
 

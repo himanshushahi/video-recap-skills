@@ -1,0 +1,25 @@
+## Problem
+
+Movie files may contain multiple audio tracks for different languages or purposes. ASR extraction previously let FFmpeg select an audio stream automatically, which can favor channel count over the original-language dialogue track. MiMo language auto-detection ran independently for each fixed window, while local Whisper selected a language from the beginning of its input. ASR also wrote its result only after the complete transcription, so an interrupted run repeated completed windows.
+
+## Decision
+
+1. The understanding skill uses `ffprobe` to expose each audio stream's global index, language/title tags, dispositions, channel layout, and codec. `--list-audio-tracks` prints the inventory as JSON. `--asr-audio-stream-index` / `ASR_AUDIO_STREAM_INDEX` explicitly selects a global FFmpeg stream index. Automatic selection prefers a uniquely marked original track, then a uniquely marked default track, then the only available track; otherwise it raises an error with the inventory. Both ASR and silence extraction map the same selected stream, and `audio.wav.meta.json` records that selection.
+2. Language resolution follows this order: `ASR_LANGUAGE` / `--asr-language`, a fixed provider-specific setting (`MIMO_ASR_LANGUAGE` or `WHISPER_LANGUAGE`), a recognized language tag on the selected track, then provider auto-detection. Recognized common ISO-639-2 tags are normalized to two-letter codes. Language decisions are recorded for every transcription window.
+3. Both MiMo and local Whisper transcribe configured audio windows. Non-empty completed windows are atomically stored in `asr_result.partial.json`, keyed by the ASR cache payload, including source identity, provider/model settings, selected index/configuration, language settings, and window duration. Resume reuses only matching complete windows; failures and empty windows are not marked successful. `--force` bypasses partial reuse. The final ASR JSON is atomically written, evidence is published, then the partial file is removed.
+4. ASR timing evidence schema v3 binds audio-stream metadata, resolved language, and per-window language decisions. Recap exposes and forwards the ASR-specific options separately from its existing assembly `--audio-stream-index`; those settings participate in recap run-manifest identity. The understanding and recap skill docs, config playbook, schema reference, environment inventory, and changelog describe the new controls.
+5. Language voting over sampled speech windows is not implemented. Providers do not expose a common language-probability interface, and text/script heuristics would be unreliable across scripts and code-switching. For untagged tracks where language matters, the caller/Agent must choose `--asr-language` explicitly.
+
+## Alternatives considered
+
+- **Keep FFmpeg automatic stream selection**: Its strongest advantage is zero configuration and simple single-track behavior. Rejected because it may choose a dub/commentary stream based on channel count, and the downmix hides that selection.
+- **Force one language for every movie**: Its strongest advantage is preventing language drift between chunks. Rejected as a default because source languages vary and one fixed code can harm recognition; callers can pin a language explicitly.
+- **Use a sample-vote language detector as the universal auto policy**: Its strongest advantage is a stable language decision without user input. Not adopted because MiMo and faster-whisper expose different detection evidence, and script-based inference is ambiguous for many languages and code-switched dialogue. Track tags and explicit language settings provide auditable decisions.
+- **Cache only the completed ASR stage**: Its strongest advantage is reusing the existing stage-cache design with little change. Rejected because interruption before the final result still repeats all transcription work.
+
+## Consequences
+
+- Multi-track extraction is deterministic and inspectable; ambiguous track layouts stop with actionable inventory rather than silently choosing by channel count. Silence analysis and ASR now use the same selected stream.
+- Matching completed non-empty windows survive interruptions and provider failures. Track, language, provider/model, source, or window-setting changes reject stale partial data.
+- Single-track inputs continue to work without new options. For untagged multi-language audio, auto-detection may still vary by window; use an explicit language when stable recognition is required.
+- Verification: focused ASR/track tests passed (42); track-list and understanding I/O tests passed (27); script/contract tests passed (117); recap audio-routing tests passed (28). The full understanding group reported 201 passed, 1 skipped, and one existing Windows FFprobe lavfi-path failure. The full orchestrator group reported 427 passed, 5 skipped, and 9 failures: eight child-process CP1252 encoding failures and one standalone video-cut integration failure. Pylance diagnostics were clean and the changed ASR signature had one compatible call site.

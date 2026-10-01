@@ -13,7 +13,8 @@ from adoption.audio_mix_binding import binding_record as audio_mix_binding_recor
 from packaging import packaging_settings
 
 
-def assembly_settings_payload(work_dir=None, *, audio_mode="narration", audio_stream_index=0):
+def assembly_settings_payload(work_dir=None, *, audio_mode="narration", audio_stream_index=0,
+                              audio_profile="voiceover-only"):
     """Settings that affect the rendered video, as a plain nested dict compared with ``==`` by
     pipeline resume logic. When work_dir is given, a user_subtitles presence flag and the
     ``{size, mtime_ns}`` identity of the overlay/subtitle-track inputs are included so dropping
@@ -65,6 +66,7 @@ def assembly_settings_payload(work_dir=None, *, audio_mode="narration", audio_st
         },
         "audio": {
             "mode": audio_mode,
+            "profile": audio_profile if audio_mode == "narration" else None,
             "selected_stream_index": audio_stream_index,
         },
     }

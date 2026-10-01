@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lib import CONFIG
 from lib import log, run_cmd, get_video_duration, file_identity
+from audio_tracks import audio_stream_map_args, select_audio_stream
 
 # ── Step 2: 场景检测 ──────────────────────────────────────────────────
 
@@ -264,13 +265,15 @@ def annotate_quiet_windows_with_asr(periods, asr_result=None, *, video_duration=
 def detect_silence_periods(video_path, work_dir, asr_result=None):
     """用 ffmpeg silencedetect 检测安静时段，作为解说插入的候选窗口"""
     audio_path = work_dir / "audio.wav"
-    if not _audio_cache_matches(audio_path, video_path):
+    audio_stream = select_audio_stream(video_path)
+    if not _audio_cache_matches(audio_path, video_path, audio_stream):
         if audio_path.exists():
             audio_path.unlink()
         # 提取到临时文件，成功后原子移动到位，避免被中断的 -y 运行留下半截 audio.wav
         tmp_path = work_dir / "audio.wav.tmp"
         extract = run_cmd([
             "ffmpeg", "-y", "-i", str(video_path),
+            *audio_stream_map_args(audio_stream),
             "-vn", "-ar", "16000", "-ac", "1",
             "-f", "wav", str(tmp_path)  # .tmp extension hides the format from ffmpeg; state it
         ])
@@ -283,7 +286,7 @@ def detect_silence_periods(video_path, work_dir, asr_result=None):
                 tmp_path.unlink()
             return []
         os.replace(str(tmp_path), str(audio_path))
-        _write_audio_meta(work_dir, video_path)
+        _write_audio_meta(work_dir, video_path, audio_stream)
 
     # Sentence-entry anchors use short acoustic pauses aligned to terminal ASR punctuation.
     # They are deliberately separate from silence_periods.json: a 200ms sentence pause is a
@@ -470,7 +473,7 @@ def _audio_meta_path(work_dir):
     return Path(work_dir) / "audio.wav.meta.json"
 
 
-def _audio_cache_matches(audio_path, video_path):
+def _audio_cache_matches(audio_path, video_path, audio_stream=None):
     audio_path = Path(audio_path)
     if not audio_path.exists():
         return False
@@ -487,18 +490,21 @@ def _audio_cache_matches(audio_path, video_path):
         return False
     return (
         isinstance(meta, dict)
+        and meta.get("schema_version") == 2
         and meta.get("source_video") == str(Path(video_path).resolve())
         and meta.get("source_video_identity") == expected
+        and meta.get("audio_stream") == audio_stream
     )
 
 
-def _write_audio_meta(work_dir, video_path):
+def _write_audio_meta(work_dir, video_path, audio_stream=None):
     _audio_meta_path(work_dir).write_text(
         json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "source_video": str(Path(video_path).resolve()),
             "source_video_identity": file_identity(video_path),
             "audio": "audio.wav",
+            "audio_stream": audio_stream,
         }, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )

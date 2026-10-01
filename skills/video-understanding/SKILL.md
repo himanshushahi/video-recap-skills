@@ -36,7 +36,7 @@ description: >
 export MIMO_API_KEY=***
 ```
 
-ASR 默认走本地 Whisper（`ASR_PROVIDER=auto` 时 `WHISPER_MODEL_DIR` 存在即用 faster-whisper），否则走 MiMo `mimo-v2.5-asr`；VLM 默认走 MiMo `mimo-v2.5`，也可把 `MIMO_API_URL` / `MIMO_MODEL` 指向任意 OpenAI 兼容网关（如本地 `http://127.0.0.1:31415/v1` + `auto` 模型）。`--skip-asr` 可跳过对白转写，但完整理解仍需要 VLM 的 API key。`--mimo-video-overview` 可开启按场景块的视频概览（仅 MiMo 端点可用）。
+ASR 默认走本地 Whisper（`ASR_PROVIDER=auto` 时 `WHISPER_MODEL_DIR` 存在即用 faster-whisper），否则走 MiMo `mimo-v2.5-asr`。多音轨文件可先用 `--list-audio-tracks` 输出音轨清单；唯一标记为 original 的音轨优先，其次唯一 default 音轨，仍有歧义时必须传 `--asr-audio-stream-index`（或设置 `ASR_AUDIO_STREAM_INDEX`），不会按声道数猜测。语种优先级为 `ASR_LANGUAGE` / `--asr-language`、固定的 provider 专属语种、已识别音轨标签、provider 自动检测。已完成且非空的转写窗口会按源视频、音轨、模型和语言设置原子缓存，重跑时复用匹配窗口。VLM 默认走 MiMo `mimo-v2.5`，也可把 `MIMO_API_URL` / `MIMO_MODEL` 指向任意 OpenAI 兼容网关（如本地 `http://127.0.0.1:31415/v1` + `auto` 模型）。`--skip-asr` 可跳过对白转写，但完整理解仍需要 VLM 的 API key。`--mimo-video-overview` 可开启按场景块的视频概览（仅 MiMo 端点可用）。
 
 若 `work_dir/background_research.json` 存在，本技能会把剧情梗概和角色名折入 VLM 上下文；`--context` 可补充一条简短提示。
 
@@ -46,7 +46,7 @@ ASR 默认走本地 Whisper（`ASR_PROVIDER=auto` 时 `WHISPER_MODEL_DIR` 存在
 
 ```bash
 python3 scripts/understand.py <video> --work-dir <work_dir> \
-  [--context "节目名/角色名"] [--scene-threshold 0.1] [--skip-asr] [--asr-provider auto|mimo-asr|whisper-local] [--mimo-video-overview] [--force]
+  [--context "节目名/角色名"] [--scene-threshold 0.1] [--skip-asr] [--asr-provider auto|mimo-asr|whisper-local] [--asr-audio-stream-index N] [--asr-language auto|hi|en] [--list-audio-tracks] [--mimo-video-overview] [--force]
 ```
 
 ## 5. 输出契约
@@ -55,7 +55,7 @@ python3 scripts/understand.py <video> --work-dir <work_dir> \
 |------|------|
 | `scenes.json` | 场景切点、起止时间与时长 |
 | `asr_result.json` | `[{start, end, text}]` 时间戳对白 |
-| `asr_timing_evidence.json` | ASR 可用性状态、粗窗口精度、glossary 前后文本，以及它所描述的源视频/音频/结果文件（路径存在性 + size/mtime） |
+| `asr_timing_evidence.json` | ASR 可用性、音轨选择、语言策略/逐窗决策、glossary 前后文本，以及源视频/音频/结果文件身份 |
 | `vlm_analysis.json` | 逐场景描述、深层分析与 `frame_facts` |
 | `silence_periods.json` | `[{start, end, duration, has_speech}]` 安静窗口 |
 | `timeline_fusion.json` | VLM、ASR 与静音信息的统一时间线 |

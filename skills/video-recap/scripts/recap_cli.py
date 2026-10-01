@@ -4,7 +4,7 @@ import argparse
 import os
 
 from lib import env_bool
-from recap_source import AUDIO_MODES
+from recap_source import AUDIO_MODES, AUDIO_PROFILES
 
 TTS_PROVIDERS = ("auto", "mimo-tts", "fish-audio", "edge-tts", "index-tts")
 
@@ -68,6 +68,17 @@ def parse_args(argv=None):
         choices=["auto", "mimo-asr", "whisper-local"],
         help="ASR provider; auto prefers local whisper when WHISPER_MODEL_DIR exists",
     )
+    core.add_argument(
+        "--asr-audio-stream-index",
+        type=int,
+        default=os.environ.get("ASR_AUDIO_STREAM_INDEX"),
+        help="global FFmpeg stream index used for source-dialogue ASR",
+    )
+    core.add_argument(
+        "--asr-language",
+        default=os.environ.get("ASR_LANGUAGE", "auto"),
+        help="pin ASR language (for example hi or en); auto uses track metadata/provider detection",
+    )
     core.add_argument("--mimo-video-overview", action="store_true")
     core.add_argument(
         "--consolidate",
@@ -81,6 +92,10 @@ def parse_args(argv=None):
 
     voice = parser.add_argument_group("声音策略与配音")
     voice.add_argument("--audio-mode", choices=AUDIO_MODES, default="narration")
+    voice.add_argument(
+        "--audio-profile", choices=AUDIO_PROFILES, default="voiceover-only",
+        help="narration source-audio policy (default: voiceover-only)",
+    )
     voice.add_argument("--audio-stream-index", type=int, default=0)
     voice.add_argument(
         "--tts-provider",
@@ -139,7 +154,7 @@ def parse_args(argv=None):
     )
     adoption.add_argument(
         "--audio-mix-adoption", default=None,
-        help="local audio_mix_adoption v1 for assembly-only full-sound rendering",
+        help="local audio_mix_adoption v1; requires --audio-profile source-ducking or legacy-ducking",
     )
 
     review = parser.add_argument_group("评审、QC 与导出")

@@ -238,14 +238,17 @@ def _work_has_source_speech(work_dir, speech_spans, require_measured):
     return any(item["text"].strip() for item in _asr_segments(work_dir))
 
 
-def _apply_source_sentence_handoffs(tts_segments, work_dir, video_duration):
+def _apply_source_sentence_handoffs(
+    tts_segments, work_dir, video_duration, *, audio_profile="legacy-ducking"
+):
     """Keep source audio ducked until a safe sentence boundary after narration.
 
     This does not move or trim narration. It only extends the ORIGINAL-audio duck
     envelope so returning the source track cannot reveal the middle of a sentence.
     """
     fade = CONFIG["duck_fade_seconds"]
-    bridge = CONFIG["duck_bridge_seconds"]
+    bridge = max(CONFIG["duck_bridge_seconds"], 3.0) \
+        if audio_profile != "legacy-ducking" else CONFIG["duck_bridge_seconds"]
     anchors, artifact, evidence_payload = _load_sentence_handoff_anchors(work_dir)
     speech_spans, quiet_windows = _handoff_speech_evidence(work_dir, evidence_payload)
     require_measured = evidence_payload.get("require_measured", False)
@@ -395,6 +398,7 @@ def _build_audio_filter_complex(
     *,
     original_audio_label="0:a",
     bgm_audio_label="2:a",
+    audio_profile="legacy-ducking",
 ):
     """Compose the audio tracks into [aout], like a cut-software timeline.
 
@@ -408,7 +412,7 @@ def _build_audio_filter_complex(
     fixed = the gap-fill envelope above; sidechaincompress = auto-duck keyed off the
     narration; none = no ducking. Placement comes from actual_place_start/end.
     """
-    ducking_mode = CONFIG["ducking_mode"]
+    ducking_mode = "fixed" if audio_profile == "source-ducking" else CONFIG["ducking_mode"]
     if ducking_mode == "sidechaincompress" and any(
         "source_duck_end" in seg and seg["source_duck_end"] > seg["actual_place_end"] + 1e-6
         for seg in tts_segments
@@ -417,15 +421,18 @@ def _build_audio_filter_complex(
         ducking_mode = "fixed"
     narr_vol = CONFIG["ducking_narr_weight"]
     fade = CONFIG["duck_fade_seconds"]
-    bridge = CONFIG["duck_bridge_seconds"]
+    bridge = max(CONFIG["duck_bridge_seconds"], 3.0) \
+        if audio_profile != "legacy-ducking" else CONFIG["duck_bridge_seconds"]
     original_in = f"[{original_audio_label}]"
     bgm_in = f"[{bgm_audio_label}]"
 
     # BGM bed (input [2:a]): ducked under each narration window when present.
     bgm_chain = ""
     if has_bgm:
-        base = CONFIG["bgm_volume"]
-        bgm_expr = _bgm_envelope(tts_segments, base, CONFIG["bgm_ducking_volume"], fade, bridge)
+        source_profile = audio_profile == "source-ducking"
+        base = 0.2 if source_profile else CONFIG["bgm_volume"]
+        duck = 0.05 if source_profile else CONFIG["bgm_ducking_volume"]
+        bgm_expr = _bgm_envelope(tts_segments, base, duck, fade, bridge)
         if bgm_expr:
             bgm_chain = f"{bgm_in}volume='{bgm_expr}':eval=frame,aresample=48000[bgm];"
         else:
@@ -450,9 +457,9 @@ def _build_audio_filter_complex(
         return f"{original_in}aresample=48000[orig];" + _amix_tail(narr_vol, bgm_chain)
 
     # fixed (default): gap-fill ducking envelope on the original track.
-    idle = CONFIG["idle_orig_volume"]
-    speech_vol = CONFIG["speech_ducking_volume"]
-    quiet_vol = CONFIG["zone_ducking_volume"]
+    idle = 0.2 if audio_profile == "source-ducking" else CONFIG["idle_orig_volume"]
+    speech_vol = 0.05 if audio_profile == "source-ducking" else CONFIG["speech_ducking_volume"]
+    quiet_vol = 0.05 if audio_profile == "source-ducking" else CONFIG["zone_ducking_volume"]
     expr = _duck_envelope(tts_segments, idle, speech_vol, quiet_vol, fade, bridge)
     if expr:
         n_overlap = sum(1 for s in tts_segments if s["overlaps_speech"])
@@ -461,5 +468,6 @@ def _build_audio_filter_complex(
         orig = f"{original_in}volume='{expr}':eval=frame,aresample=48000[orig];"
     else:
         # No placement info at all: hold the original at a constant level.
-        orig = f"{original_in}volume={CONFIG['ducking_orig_volume']},aresample=48000[orig];"
+        fallback = 0.2 if audio_profile == "source-ducking" else CONFIG["ducking_orig_volume"]
+        orig = f"{original_in}volume={fallback},aresample=48000[orig];"
     return orig + _amix_tail(narr_vol, bgm_chain)

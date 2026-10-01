@@ -167,6 +167,7 @@ def test_explicit_mix_produces_sample_accurate_fractional_movie_clock(
             assemble.assemble_video(
                 picture, segments, work, output, narration_adoption_path=narration,
                 tts_meta_path=meta, audio_mix_adoption_path=adoption,
+                audio_profile="source-ducking",
             )
         assert not output.exists()
         assert not (work / 'audio_mix_binding.json').exists()
@@ -175,6 +176,7 @@ def test_explicit_mix_produces_sample_accurate_fractional_movie_clock(
     assemble.assemble_video(
         picture, segments, work, output, narration_adoption_path=narration,
         tts_meta_path=meta, audio_mix_adoption_path=adoption,
+        audio_profile="source-ducking",
     )
     assert_sample_clock(output)
 

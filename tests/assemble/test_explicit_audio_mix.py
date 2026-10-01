@@ -141,6 +141,7 @@ def test_explicit_branch_renders_actual_bindings_and_ignores_ambient_mix(
     assemble.assemble_video(
         picture, segments, work, output, narration_adoption_path=narration,
         tts_meta_path=meta, audio_mix_adoption_path=adoption,
+        audio_profile="source-ducking",
     )
     assert output.is_file()
     narration_report = json.loads((work / "narration_input_binding.json").read_text())
@@ -166,7 +167,7 @@ def test_explicit_branch_allows_visual_reencode_but_preserves_picture_clock(
     assemble.assemble_video(
         picture, segments, work, work / "output.mp4",
         narration_adoption_path=narration, tts_meta_path=meta,
-        audio_mix_adoption_path=adoption,
+        audio_mix_adoption_path=adoption, audio_profile="source-ducking",
     )
     report = json.loads((work / "audio_mix_binding.json").read_text())
     output_picture = report["output_picture"]
@@ -185,7 +186,7 @@ def test_missing_top_level_field_fails_before_snapshot(explicit_case, field):
         assemble.assemble_video(
             picture, segments, work, work / "output.mp4",
             narration_adoption_path=narration, tts_meta_path=meta,
-            audio_mix_adoption_path=adoption,
+            audio_mix_adoption_path=adoption, audio_profile="source-ducking",
         )
     assert not (work / ".narration_input_snapshots").exists()
     assert not (work / "output.mp4").exists()
@@ -205,10 +206,11 @@ def test_isolated_copied_skill_cli_publishes_new_alias_and_manifest(explicit_cas
     env = {**os.environ, "BGM_PATH": "/missing/ambient.wav", "FINAL_LOUDNORM": "1",
            "NARRATION_SPEED": "1.15", "OUTPUT_MAX_HEIGHT": "0"}
     command = [
-        sys.executable, "-I", "-c", launcher, copied / "scripts",
+        sys.executable, "-X", "utf8", "-I", "-c", launcher, copied / "scripts",
         copied / "scripts/assemble.py", picture, "--work-dir", work,
         "--tts-meta", meta, "--narration-adoption", narration,
-        "--audio-mix-adoption", adoption, "--no-burn-subtitles",
+        "--audio-mix-adoption", adoption, "--audio-profile", "source-ducking",
+        "--no-burn-subtitles",
         "--output-dir", delivery, "--recap-stem", "strict",
     ]
     result = subprocess.run(tuple(map(str, command)), env=env, capture_output=True,

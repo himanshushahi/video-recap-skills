@@ -26,9 +26,9 @@ description: >
 - `silence`
 - `narration`
 
-因此，旁白间隙是主动选择，不是必须填满的空白。不要为了“更满”而加入通用 BGM、压住必须听见的台词或消除有意义的沉默。
+因此，旁白间隙是主动选择，不是必须填满的空白。默认 `voiceover-only` 不使用电影原声；显式提供 `BGM_PATH` 时，BGM 填补间隙并在旁白下压低。不要把未核验授权的音乐称为版权免费。
 
-当前渲染器不解析 `visual_audio_board.json`；Agent 通过旁白时间、`overlaps_speech`、原声留白与现有混音参数落实这些决定。
+当前渲染器不解析 `visual_audio_board.json`；Agent 通过旁白时间、`overlaps_speech`、原声留白与现有混音参数落实这些决定。需要保留原片动作声/对白时，可显式选择 `source-ducking`；它将原声与 BGM 间隙设为 20%、旁白下设为 5%，并至少用 3 秒 bridge 减少快速切换。`legacy-ducking` 保留旧混音参数。
 
 ## 3. 输入契约
 
@@ -44,6 +44,7 @@ description: >
 ```bash
 python3 scripts/assemble.py <video> --work-dir <work_dir> \
   [--audio-mode narration|source-mix|adopted-packet-copy] [--audio-stream-index <N>] \
+  [--audio-profile voiceover-only|source-ducking|legacy-ducking] \
   [--tts-meta <tts_meta.json> --narration-adoption <narration_adoption.json>] \
   [--audio-mix-adoption <audio_mix_adoption.json>] \
   [--recap-stem <name>] [--output-dir <dir>] [--no-burn-subtitles] \
@@ -66,8 +67,8 @@ python3 scripts/assemble.py <video> --work-dir <work_dir> \
 
 ## 6. 合成规则
 
-- 音频模式的处理与冻结语义见 `references/audio-modes.md`。默认仍为 `narration`；另外两种模式必须显式选择。
-- `--audio-mix-adoption` 只与显式 `--tts-meta`、`--narration-adoption` 同时使用；它保留 `narration` 模式名，但跳过旧速度/适配、原声 handoff、环境 BGM、duck、loudnorm 和 limiter。
+- 音频模式与 profile 的处理语义见 `references/audio-modes.md`。默认 `audio_mode=narration`、`audio_profile=voiceover-only`；非 narration 音频模式仍须显式选择。
+- `--audio-mix-adoption` 只与显式 `--tts-meta`、`--narration-adoption` 同时使用，并要求显式选择 `source-ducking` 或 `legacy-ducking`，避免消费来源不明的 prepared bed。
 - 音频按轨道混合：原声、可选 BGM 与旁白各自独立。
 - 旁白不做任何容差裁尾；温和加速后仍放不下即 `no_safe_fit`。每段 `_placed_*.wav`
   必须与序列化后的时间线区间等长或更短，否则 `timeline_audio_mismatch` 阻断。
@@ -81,8 +82,9 @@ python3 scripts/assemble.py <video> --work-dir <work_dir> \
 - 剪映草稿引用未烧录的源视频，因此原片硬字幕仍会保留，必要时在剪映内另行遮罩。
 - 字幕外观可用 `SUBTITLE_FONT_SIZE`、`SUBTITLE_MARGIN_V`、`SUBTITLE_MAX_CHARS` 等控制。
 - `SUBTITLE_Y_TOP/BOT` 把 ASS 基线放到测得的原片字幕区域，坐标为半开 `[top, bot)`；显式遮罩策略下默认 `SUBTITLE_MASK_OPACITY=0.6`，`SOURCE_SUBTITLE_MASK_TIMING=narration`。
-- 原声在旁白间隙回到 `IDLE_ORIG_VOLUME`，旁白下压到 `SPEECH_DUCKING_VOLUME`；`DUCK_FADE_SECONDS` 控制过渡。还可配置 `DUCKING_MODE`、`ZONE_DUCKING_VOLUME`、`FINAL_LOUDNORM` 与 `TARGET_LUFS`。
-- 可通过 `BGM_PATH` 指定 BGM；它会循环到成片长度，并按 `BGM_VOLUME` / `BGM_DUCKING_VOLUME` 混音。不要在没有创作依据时设置通用 BGM。
+- 默认 profile 不映射原片音轨；`BGM_PATH` 配置的音乐循环全片，在旁白时按 `BGM_DUCKING_VOLUME` 下压，并至少用 3 秒 bridge 平滑短间隔。
+- `source-ducking` 在旁白间隙以 20% 播放原声和 BGM、旁白时两者降到 5%；`legacy-ducking` 使用 `IDLE_ORIG_VOLUME`、`SPEECH_DUCKING_VOLUME` 等旧参数。`DUCK_FADE_SECONDS` 控制过渡，`DUCK_BRIDGE_SECONDS` 可延长桥接时间。
+- BGM 是调用方提供的素材；使用者须自行确认授权覆盖目标平台、地区、变现和使用时长。混音设置不能保证免于版权声明。
 - 烧录字幕需要带 `subtitles` / libass 的 ffmpeg；合成阶段会预检并在缺失时明确失败。
 - 原声留白中的对白字幕优先读取 Agent 校对的 `original_subtitles.json`；否则保守映射 ASR。只有遮罩覆盖留白或用户字幕明确要求替换时才烧录原声对白，并用 `「」` 与旁白区分。
 

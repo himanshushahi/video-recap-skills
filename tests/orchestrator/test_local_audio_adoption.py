@@ -30,11 +30,29 @@ def _bundle(tmp_path):
 def _cli(video, work, output, bundle, *extra):
     return [
         "recap.py", str(video), "--work-dir", str(work), "--output-dir", str(output),
+        "--audio-profile", "source-ducking",
         "--tts-meta", str(bundle["tts_meta"]),
         "--narration-adoption", str(bundle["narration_adoption"]),
         "--audio-mix-adoption", str(bundle["audio_mix_adoption"]),
         *extra,
     ]
+
+
+def test_local_bundle_requires_explicit_source_audio_profile(monkeypatch, tmp_path):
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"video")
+    bundle = _bundle(tmp_path)
+    work = tmp_path / "work"
+    args = _cli(video, work, tmp_path / "out", bundle)
+    profile_index = args.index("--audio-profile")
+    del args[profile_index:profile_index + 2]
+    monkeypatch.setattr(sys, "argv", args)
+    calls = []
+    monkeypatch.setattr(recap_runner, "_run", lambda *values: calls.append(values))
+
+    with pytest.raises(SystemExit):
+        recap_runner.main()
+    assert calls == []
 
 
 def _finish_stubs(monkeypatch, work, calls):
@@ -127,7 +145,10 @@ def test_local_bundle_runs_only_assemble_with_resolved_paths_and_no_narration(
     output = tmp_path / "delivery"
     calls = []
     _finish_stubs(monkeypatch, work, calls)
-    monkeypatch.setattr(sys, "argv", _cli(video, work, output, bundle))
+    monkeypatch.setattr(
+        sys, "argv",
+        _cli(video, work, output, bundle, "--audio-profile", "source-ducking"),
+    )
 
     recap_runner.main()
 
@@ -155,7 +176,10 @@ def test_local_bundle_ignores_hostile_ambient_tts_and_voice(monkeypatch, tmp_pat
     monkeypatch.setenv("TTS_PROVIDER", "not-a-provider")
     monkeypatch.setenv("VOICE_REF", str(tmp_path / "missing.wav"))
     monkeypatch.setenv("MIMO_TTS_VOICE", "hostile-ambient-voice")
-    monkeypatch.setattr(sys, "argv", _cli(video, work, tmp_path / "out", bundle))
+    monkeypatch.setattr(
+        sys, "argv",
+        _cli(video, work, tmp_path / "out", bundle, "--audio-profile", "source-ducking"),
+    )
 
     recap_runner.main()
 
@@ -167,7 +191,7 @@ def test_local_bundle_ignores_hostile_ambient_tts_and_voice(monkeypatch, tmp_pat
 def test_audio_binding_records_each_local_artifact_path(tmp_path):
     bundle = _bundle(tmp_path)
     args = Namespace(
-        audio_mode="narration", audio_stream_index=0,
+        audio_mode="narration", audio_profile="source-ducking", audio_stream_index=0,
         tts_meta=str(bundle["tts_meta"]),
         narration_adoption=str(bundle["narration_adoption"]),
         audio_mix_adoption=str(bundle["audio_mix_adoption"]),
@@ -176,6 +200,7 @@ def test_audio_binding_records_each_local_artifact_path(tmp_path):
     binding = recap_source.audio_binding(args)
 
     assert binding["mode"] == "narration"
+    assert binding["profile"] == "source-ducking"
     assert binding["local_adoption"] == {
         name: {"path": str(path.resolve())} for name, path in bundle.items()
     }
@@ -303,6 +328,7 @@ import argparse,json,shutil
 from pathlib import Path
 p=argparse.ArgumentParser(); p.add_argument('video'); p.add_argument('--work-dir',required=True)
 p.add_argument('--recap-stem',required=True); p.add_argument('--output-dir',required=True)
+p.add_argument('--audio-profile',required=True)
 p.add_argument('--tts-meta',required=True); p.add_argument('--narration-adoption',required=True)
 p.add_argument('--audio-mix-adoption',required=True); p.add_argument('--no-burn-subtitles',action='store_true')
 a=p.parse_args(); work=Path(a.work_dir); out=Path(a.output_dir)/f'recap_{a.recap_stem}.mp4'
@@ -339,7 +365,7 @@ out.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(a.video,out)
         f"runpy.run_path({str(copied / 'video-recap/scripts/recap.py')!r},run_name='__main__')"
     )
     result = subprocess.run(
-        [sys.executable, "-I", "-c", bootstrap,
+        [sys.executable, "-X", "utf8", "-I", "-c", bootstrap,
          *_cli(picture, work, output, bundle, "--no-burn-subtitles")[1:]],
         env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
     )

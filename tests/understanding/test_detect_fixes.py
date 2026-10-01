@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from subprocess import CompletedProcess
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'skills' / 'video-understanding' / 'scripts'))
 
 import detect  # noqa: E402
@@ -13,6 +15,15 @@ from detect import (  # noqa: E402
     detect_silence_periods,
     detect_speech_boundary_anchors,
 )
+
+
+@pytest.fixture(autouse=True)
+def _single_audio_stream(monkeypatch):
+    monkeypatch.setattr(
+        detect,
+        "select_audio_stream",
+        lambda *_args: {"index": 0, "language": "eng"},
+    )
 
 
 def _ok(stdout="", stderr=""):
@@ -129,7 +140,7 @@ def test_detect_silence_returns_empty_on_silencedetect_nonzero(monkeypatch, tmp_
     video = tmp_path / "v.mp4"
     video.write_bytes(b"video")
     (tmp_path / "audio.wav").write_bytes(b"RIFFxxxx")
-    detect._write_audio_meta(tmp_path, video)
+    detect._write_audio_meta(tmp_path, video, detect.select_audio_stream(video))
     logs = []
     monkeypatch.setattr("detect.log", lambda msg: logs.append(msg))
     monkeypatch.setattr("detect.run_cmd", lambda cmd, **kw: _fail("filter error"))

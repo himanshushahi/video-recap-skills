@@ -10,6 +10,12 @@
     "ASR_CHUNK_MIN_CHARS": {
       "classification": "value"
     },
+    "ASR_AUDIO_STREAM_INDEX": {
+      "classification": "value"
+    },
+    "ASR_LANGUAGE": {
+      "classification": "value"
+    },
     "ASR_PROVIDER": {
       "classification": "value"
     },

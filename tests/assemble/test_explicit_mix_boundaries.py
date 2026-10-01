@@ -129,6 +129,7 @@ def render(case, tmp_path, name='render'):
         case['picture'], segments, work, work / 'output.mp4',
         narration_adoption_path=case['narration'], tts_meta_path=case['meta'],
         audio_mix_adoption_path=case['adoption'],
+        audio_profile='source-ducking',
     )
     return output, work, segments
 

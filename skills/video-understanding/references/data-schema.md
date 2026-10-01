@@ -51,11 +51,25 @@ ASR 的独立证据 sidecar，不改变 `asr_result.json` 的既有数组结构�
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "status": "AVAILABLE_COARSE",
   "source_video": {"size": 123456, "mtime_ns": 1700000000000000000},
   "audio": {"size": 2048, "mtime_ns": 1700000001000000000},
   "asr_result": {"size": 512, "mtime_ns": 1700000002000000000},
+  "audio_stream": {
+    "index": 2,
+    "language": "hin",
+    "title": "Original",
+    "codec": "aac",
+    "channels": 2,
+    "channel_layout": "stereo",
+    "default": false,
+    "original": true,
+    "commentary": false,
+    "descriptive": false
+  },
+  "asr_language": "hi",
+  "language_decisions": [{"index": 0, "start": 0.0, "end": 15.0, "language": "hi"}],
   "glossary": {
     "names": ["叶轻眉"],
     "name_count": 1
@@ -87,6 +101,8 @@ ASR 的独立证据 sidecar，不改变 `asr_result.json` 的既有数组结构�
 一致）都会使 ASR 缓存失效。
 `UNAVAILABLE_NO_DURATION` 与 `EMPTY_UNKNOWN` 是可重试的不可用结果，不作为缓存命中；写作
 brief 会校验 sidecar 并打印当前状态，缺失或与当前文件不一致时显示 `MISSING_OR_STALE`。
+schema v3 还绑定所选音轨元数据、固定/回退 ASR 语言及逐窗语言决策；验证时音轨 provenance 必须与
+`audio.wav.meta.json` 一致。
 
 ## asr_writing_chunks.json
 

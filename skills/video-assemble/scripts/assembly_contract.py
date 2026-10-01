@@ -30,6 +30,7 @@ _AUDIO_QC_CODES = frozenset({
 def _assembly_manifest_payload(input_video, tts_segments, work_dir, output_path,
                                tts_meta_path=None, final_output=None, *, settings_payload,
                                audio_mode="narration", audio_stream_index=0,
+                               audio_profile="voiceover-only",
                                narration_input_binding=None, audio_mix_binding=None):
     """Slim render record. The orchestrator reads `final_output` to report the result;
     `source_video` stays None unless cut mode explicitly passed --source-video, proving a
@@ -40,7 +41,8 @@ def _assembly_manifest_payload(input_video, tts_segments, work_dir, output_path,
     qc_path = Path(work_dir) / ASSEMBLY_QC
     qc = _load_work_json(work_dir, ASSEMBLY_QC)  # always written by publish_render first
     settings = settings_payload(
-        work_dir, audio_mode=audio_mode, audio_stream_index=audio_stream_index
+        work_dir, audio_mode=audio_mode, audio_stream_index=audio_stream_index,
+        audio_profile=audio_profile,
     )
     payload = {
         "schema_version": 2,
@@ -50,6 +52,7 @@ def _assembly_manifest_payload(input_video, tts_segments, work_dir, output_path,
         "tts_meta": str(Path(tts_meta_path).resolve()) if tts_meta_path else None,
         "tts_segments": len(tts_segments),
         "audio_mode": audio_mode,
+        "audio_profile": audio_profile if audio_mode == "narration" else None,
         "selected_audio_stream_index": audio_stream_index,
         "assembly_settings": settings,
         "output_path": str(output_path.resolve()),
@@ -183,6 +186,7 @@ def _placed_audio_matches_timeline(seg):
 def _build_assembly_qc(tts_segments, video_duration, *, audio_operations, render_delivery,
                        output_path=None, source_has_audio=None, loudness_mode=None,
                        loudnorm_measurement=None, visual_qc=None, audio_mode="narration",
+                       audio_profile="voiceover-only",
                        adopted_audio=None,
                        narration_input_binding=None, audio_mix_binding=None,
                        source_audio_status=None):
@@ -271,6 +275,7 @@ def _build_assembly_qc(tts_segments, video_duration, *, audio_operations, render
         "blocking_codes": blocking_codes,
         "duration": round(float(video_duration), 4),
         "audio_mode": audio_mode,
+        "audio_profile": audio_profile if audio_mode == "narration" else None,
         "audio_operations": audio_operations,
         "adopted_audio": adopted_audio,
         "narration_input_binding": narration_input_binding,

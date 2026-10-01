@@ -211,6 +211,9 @@ def _asr_cache_payload(video_path, *, skip_asr=False):
             "skip_asr": bool(skip_asr),
             "asr_provider": (CONFIG.get("asr_provider") or "auto"),
             "resolved_asr_provider": resolved_provider,
+            "asr_audio_stream_index": CONFIG.get("asr_audio_stream_index"),
+            "asr_language": CONFIG.get("asr_language", "auto"),
+            "audio_selection_policy_version": 1,
             "whisper_model_dir": CONFIG.get("whisper_model_dir"),
             "whisper_model_identity": (
                 _artifact_identity(whisper_model)

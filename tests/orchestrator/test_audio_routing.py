@@ -2,6 +2,7 @@
 
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -38,6 +39,36 @@ def _finish_stubs(monkeypatch, work, calls):
     return fake_run
 
 
+def test_narration_audio_profile_is_forwarded_and_persisted(monkeypatch, tmp_path):
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"video")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "narration.json").write_text('[{"start":0,"end":1,"narration":"voice"}]')
+    recap_runtime._write_run_manifest(work, video, _args(audio_profile="source-ducking"))
+    calls = []
+    _finish_stubs(monkeypatch, work, calls)
+    monkeypatch.setattr(recap_runner, "_preflight_burn_subtitles", lambda _args: None)
+    monkeypatch.setattr(recap_runner, "_narrate", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["recap.py", str(video), "--work-dir", str(work),
+         "--audio-profile", "source-ducking"],
+    )
+
+    recap_runner.main()
+
+    assemble = next(args for _, script, args in calls if script == "assemble.py")
+    profile_index = assemble.index("--audio-profile")
+    assert assemble[profile_index + 1] == "source-ducking"
+    manifest = json.loads((work / "recap_run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["audio"]["profile"] == "source-ducking"
+    continuation = recap_timeline._continuation_command(
+        video, work, _args(audio_profile="source-ducking")
+    )
+    assert "--audio-profile source-ducking" in continuation
+
+
 @pytest.mark.parametrize("audio_mode", ["source-mix", "adopted-packet-copy"])
 def test_full_source_audio_routes_directly_to_assemble_without_tts(
     monkeypatch, tmp_path, audio_mode
@@ -68,7 +99,11 @@ def test_full_source_audio_routes_directly_to_assemble_without_tts(
     assert "--tts-meta" not in assemble
     assert overlays.read_text(encoding="utf-8") == '{"author":"keep"}'
     manifest = json.loads((work / "recap_run_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["audio"] == {"mode": audio_mode, "selected_stream_index": 0}
+    assert manifest["audio"] == {
+        "mode": audio_mode,
+        "profile": None,
+        "selected_stream_index": 0,
+    }
     stages = json.loads((work / "preflight_qc.json").read_text(encoding="utf-8"))
     policy = stages["metadata"]["stages"]["pre_assemble"]["metadata"]
     assert policy["tts"] == "not_applicable"
@@ -246,6 +281,31 @@ def test_full_adopted_audio_forwards_selected_stream(monkeypatch, tmp_path):
     assert assemble[assemble.index("--audio-stream-index") + 1] == "1"
     manifest = json.loads((work / "recap_run_manifest.json").read_text(encoding="utf-8"))
     assert manifest["audio"]["selected_stream_index"] == 1
+
+
+def test_asr_stream_and_language_options_are_separate_and_in_manifest(monkeypatch, tmp_path):
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"source")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "recap.py", str(video), "--asr-audio-stream-index", "2",
+            "--asr-language", "hi", "--audio-stream-index", "1",
+        ],
+    )
+    _parser, args = recap_cli.parse_args()
+
+    understand_args = recap_timeline._understand_args_for_source(
+        {"source_path": str(video)}, tmp_path / "source-work", args
+    )
+    manifest = recap_runtime._run_manifest_payload(video, args)
+
+    assert understand_args[understand_args.index("--asr-audio-stream-index") + 1] == "2"
+    assert understand_args[understand_args.index("--asr-language") + 1] == "hi"
+    assert manifest["audio"]["selected_stream_index"] == 1
+    assert manifest["settings"]["asr_audio_stream_index"] == 2
+    assert manifest["settings"]["asr_language"] == "hi"
 
 
 def test_source_full_rejects_ambiguous_unbound_narration_workdir(monkeypatch, tmp_path):

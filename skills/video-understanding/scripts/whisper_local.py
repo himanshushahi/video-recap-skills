@@ -1,10 +1,9 @@
 """Local Whisper ASR via faster-whisper (optional dependency).
 
 Uses the local model directory from WHISPER_MODEL_DIR (a faster-whisper /
-CTranslate2 converted Whisper directory, e.g. large-v3-turbo). The whole
-extracted audio.wav is transcribed in one call — faster-whisper does its own
-internal chunking — so segments carry model-native timestamps instead of the
-fixed coarse windows the MiMo ASR path uses.
+CTranslate2 converted Whisper directory, e.g. large-v3-turbo). The caller
+transcribes resumable audio windows; returned model-native timestamps are
+offset onto the source timeline instead of using MiMo's coarse window bounds.
 
 Output matches the MiMo path: [{"start": s, "end": s, "text": str}].
 """
@@ -76,10 +75,12 @@ def _load_model():
     return _MODEL
 
 
-def transcribe_wav_local(wav_path):
+def transcribe_wav_local(wav_path, language=None):
     """Transcribe one wav file locally; return (segments, detected_language)."""
     model = _load_model()
-    language = (CONFIG.get("whisper_language") or "auto").strip().lower()
+    language = str(
+        language if language is not None else CONFIG.get("whisper_language") or "auto"
+    ).strip().lower()
     transcribe_kwargs = {
         "task": "transcribe",
         "vad_filter": bool(CONFIG.get("whisper_vad_filter", False)),

@@ -42,6 +42,23 @@ def _pin_mimo_asr_provider(monkeypatch):
     # on machines with WHISPER_MODEL_DIR configured. Whisper-local has its own
     # tests below that override this pin.
     monkeypatch.setitem(asr.CONFIG, "asr_provider", "mimo-asr")
+    monkeypatch.setitem(asr.CONFIG, "asr_audio_stream_index", None)
+    monkeypatch.setattr(
+        asr,
+        "select_audio_stream",
+        lambda *_args: {
+            "index": 0,
+            "language": None,
+            "title": None,
+            "codec": "aac",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "default": True,
+            "original": False,
+            "commentary": False,
+            "descriptive": False,
+        },
+    )
 
 
 def _video(tmp_path, content=b"source-video"):
@@ -193,6 +210,100 @@ def test_empty_provider_text_is_unknown_not_proven_silence_and_not_cached(
     assert "silence" not in evidence["windows"][0]
     # one all-empty run must not become a permanent cache hit
     assert _cache_state_after_meta(tmp_path, video) == "MISS"
+
+
+def test_asr_maps_selected_global_stream_and_pins_language_from_track_metadata(
+    monkeypatch, tmp_path
+):
+    video = _video(tmp_path)
+    track = {
+        "index": 2,
+        "language": "hin",
+        "title": "Original",
+        "codec": "aac",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "default": False,
+        "original": True,
+        "commentary": False,
+        "descriptive": False,
+    }
+    monkeypatch.setattr(asr, "select_audio_stream", lambda *_args: track)
+    monkeypatch.setitem(asr.CONFIG, "asr_language", "auto")
+    monkeypatch.setitem(asr.CONFIG, "mimo_asr_language", "auto")
+    monkeypatch.setitem(asr.CONFIG, "mimo_asr_api_key", "test-key")
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        Path(command[-1]).write_bytes(b"RIFF-audio")
+        return CompletedProcess(command, 0, stdout="", stderr="")
+
+    seen_languages = []
+    monkeypatch.setattr(asr, "run_cmd", fake_run)
+    monkeypatch.setattr(asr, "get_video_duration", lambda _path: 1.0)
+    monkeypatch.setattr(
+        asr,
+        "_run_asr",
+        lambda _path, language=None: seen_languages.append(language) or "हिंदी संवाद",
+    )
+
+    asr.transcribe_audio(video, tmp_path)
+
+    assert "-map" in commands[0]
+    assert commands[0][commands[0].index("-map") + 1] == "0:2"
+    assert seen_languages == ["hi"]
+    evidence = _read_evidence(tmp_path)
+    assert evidence["audio_stream"] == track
+    assert evidence["asr_language"] == "hi"
+    assert evidence["language_decisions"][0]["language"] == "hi"
+
+
+def test_language_precedence_respects_explicit_provider_and_unified_settings(monkeypatch):
+    track = {"language": "hin"}
+    monkeypatch.setitem(asr.CONFIG, "asr_language", "auto")
+    monkeypatch.setitem(asr.CONFIG, "mimo_asr_language", "en")
+    assert asr._resolve_asr_language(track, "mimo-asr") == "en"
+
+    monkeypatch.setitem(asr.CONFIG, "asr_language", "hi")
+    assert asr._resolve_asr_language(track, "mimo-asr") == "hi"
+
+
+def test_partial_asr_cache_resumes_completed_nonempty_windows(monkeypatch, tmp_path):
+    video = _video(tmp_path)
+    monkeypatch.setitem(asr.CONFIG, "mimo_asr_api_key", "test-key")
+    monkeypatch.setitem(asr.CONFIG, "asr_segment_seconds", 15)
+    monkeypatch.setattr(asr, "run_cmd", _successful_extract())
+    monkeypatch.setattr(asr, "get_video_duration", lambda _path: 45.0)
+    calls = []
+    fail_second_window = True
+
+    def transcribe(wav_path):
+        nonlocal fail_second_window
+        name = Path(wav_path).stem
+        calls.append(name)
+        if name == "seg_001" and fail_second_window:
+            fail_second_window = False
+            raise asr.ASRProviderError("interrupted provider request")
+        return f"text-{name}"
+
+    monkeypatch.setattr(asr, "_run_asr", transcribe)
+    with pytest.raises(asr.ASRProviderError, match="interrupted"):
+        asr.transcribe_audio(video, tmp_path)
+
+    partial_path = tmp_path / "asr_result.partial.json"
+    partial = json.loads(partial_path.read_text(encoding="utf-8"))
+    assert list(partial["windows"]) == ["0"]
+    assert calls == ["seg_000", "seg_001"]
+
+    calls.clear()
+    result = asr.transcribe_audio(video, tmp_path)
+
+    assert calls == ["seg_001", "seg_002"]
+    assert [segment["text"] for segment in result] == [
+        "text-seg_000", "text-seg_001", "text-seg_002"
+    ]
+    assert not partial_path.exists()
 
 
 def test_missing_sidecar_is_legacy_unverified_without_network(tmp_path):
@@ -484,3 +595,10 @@ def test_asr_cache_tracks_resolved_provider_and_whisper_model_identity(
     mimo_payload = _asr_cache_payload(video)
     assert mimo_payload["settings"]["resolved_asr_provider"] == "mimo-asr"
     assert mimo_payload["settings"]["whisper_model_identity"] is None
+
+    monkeypatch.setitem(asr.CONFIG, "asr_audio_stream_index", 2)
+    monkeypatch.setitem(asr.CONFIG, "asr_language", "hi")
+    selected_payload = _asr_cache_payload(video)
+    assert selected_payload["settings"]["asr_audio_stream_index"] == 2
+    assert selected_payload["settings"]["asr_language"] == "hi"
+    assert selected_payload != mimo_payload

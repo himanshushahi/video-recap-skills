@@ -31,6 +31,7 @@ __all__ = [
 
 
 AUDIO_MODES = ("narration", "source-mix", "adopted-packet-copy")
+AUDIO_PROFILES = ("voiceover-only", "source-ducking", "legacy-ducking")
 
 
 _current_narration_binding = strict_publish.current_narration_binding
@@ -39,11 +40,16 @@ _current_audio_mix_binding = strict_publish.current_audio_mix_binding
 
 def assemble_video(input_video, tts_segments, work_dir, output_path, *,
                    audio_mode="narration", audio_stream_index=0,
+                   audio_profile="voiceover-only",
                    narration_adoption_path=None, tts_meta_path=None,
                    audio_mix_adoption_path=None):
     """组装最终视频"""
     if audio_mode not in AUDIO_MODES:
         raise RuntimeError(f"不支持的 audio_mode: {audio_mode}")
+    if audio_profile not in AUDIO_PROFILES:
+        raise RuntimeError(f"不支持的 audio_profile: {audio_profile}")
+    if audio_mode != "narration" and audio_profile != "voiceover-only":
+        raise RuntimeError("audio_profile 仅适用于 narration audio_mode")
     if isinstance(audio_stream_index, bool) or not isinstance(audio_stream_index, int) or audio_stream_index < 0:
         raise RuntimeError("audio_stream_index 必须是非负整数")
     if audio_mode == "narration" and not tts_segments:
@@ -75,6 +81,8 @@ def assemble_video(input_video, tts_segments, work_dir, output_path, *,
         audio_mode != "narration" or narration_adoption_path is None or tts_meta_path is None
     ):
         raise RuntimeError("audio mix adoption 要求 narration 模式及显式 narration adoption/tts_meta")
+    if audio_mix_adoption_path is not None and audio_profile == "voiceover-only":
+        raise RuntimeError("显式 prepared-bed audio mix 要求 source-ducking 或 legacy-ducking profile")
 
     published_output = Path(output_path)
     if audio_mix_adoption_path is not None and published_output.exists():
@@ -153,7 +161,12 @@ def assemble_video(input_video, tts_segments, work_dir, output_path, *,
             narration_audio._build_timed_narration(
                 tts_segments, narration_wav, video_duration, work_dir
             )
-        handoffs = audio_mix._apply_source_sentence_handoffs(tts_segments, work_dir, video_duration)
+        handoffs = (
+            audio_mix._apply_source_sentence_handoffs(
+                tts_segments, work_dir, video_duration, audio_profile=audio_profile
+            )
+            if audio_profile != "voiceover-only" else []
+        )
         if handoffs:
             lib.log(
                 "原声句末交接: "
@@ -184,6 +197,7 @@ def assemble_video(input_video, tts_segments, work_dir, output_path, *,
     timeline_emit._emit_timeline(
         input_video, tts_segments, work_dir, video_duration, canvas, has_bgm,
         audio_mode=audio_mode, selected_audio_stream=audio_stream_index,
+        audio_profile=audio_profile,
         explicit_audio_mix=(
             {**explicit_mix, **explicit_mix["runtime"]} if explicit_mix is not None else None
         ),
@@ -207,8 +221,8 @@ def assemble_video(input_video, tts_segments, work_dir, output_path, *,
         codes = ", ".join(visual_qc["blocking_codes"])
         raise RuntimeError(f"视觉 QC 失败: {codes}；详见 {Path(work_dir) / constants.VISUAL_QC}")
 
-    # Select exactly one of three explicit audio paths. Only narration may synthesize
-    # a missing original track; adopted copy never decodes, mixes, normalizes or trims.
+    # Select exactly one of three explicit audio paths. The default narration profile
+    # substitutes silence for movie audio; source profiles opt back into that track.
     source_has_audio = media._has_audio_stream(input_video)
     adopted_audio = None
     loudnorm_measurement = None
@@ -240,11 +254,15 @@ def assemble_video(input_video, tts_segments, work_dir, output_path, *,
         audio_input_args = ["-i", explicit_mix["runtime"]["master"]["path"]]
     else:
         # 混合原始音频 + 解说音频（+ 可选 BGM）
-        if source_has_audio:
+        use_movie_audio = audio_profile != "voiceover-only"
+        if source_has_audio and use_movie_audio:
             original_audio_label = "0:a"
             bgm_audio_label = "2:a"
         else:
-            lib.log("源视频无音轨，使用静音原声音轨进行混音")
+            lib.log(
+                "voiceover-only: 不消费原片音轨；使用静音间隙"
+                if not use_movie_audio else "源视频无音轨，使用静音原声音轨进行混音"
+            )
             original_audio_input = [
                 "-f", "lavfi", "-t", str(video_duration),
                 "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
@@ -256,6 +274,7 @@ def assemble_video(input_video, tts_segments, work_dir, output_path, *,
             has_bgm,
             original_audio_label=original_audio_label,
             bgm_audio_label=bgm_audio_label,
+            audio_profile=audio_profile,
         )
         # BGM is input [2:a]; -stream_loop -1 loops it to cover the whole timeline (amix
         # duration=first + -t trim it back to the video length).
@@ -388,6 +407,9 @@ def assemble_video(input_video, tts_segments, work_dir, output_path, *,
     subtitle_track_binding.verify_rendered_picture(work_dir, output_path)
     audio_operations = {
         "narration": audio_mode == "narration",
+        "source_audio_included": (
+            audio_mode != "narration" or audio_profile != "voiceover-only"
+        ),
         "source_mix": audio_mode == "source-mix",
         "bgm_mix": has_bgm and audio_mode != "adopted-packet-copy" and explicit_mix is None,
         "ducking": audio_mode == "narration" and explicit_mix is None,
@@ -417,12 +439,17 @@ def assemble_video(input_video, tts_segments, work_dir, output_path, *,
         "not_run" if audio_mode == "adopted-packet-copy" else
         "fixed_master_gain_no_loudnorm" if explicit_mix is not None else None
     )
-    source_audio_status = "prepared_bed_adopted" if explicit_mix is not None else None
+    source_audio_status = (
+        "prepared_bed_adopted" if explicit_mix is not None else
+        "excluded_by_voiceover_only_profile"
+        if audio_mode == "narration" and audio_profile == "voiceover-only" else None
+    )
     render_output = strict_publish.publish_render(
         work_dir=work_dir, binding=binding, explicit_mix=explicit_mix,
         tts_segments=tts_segments, narration_wav=narration_wav,
         render_output=render_output, published_output=published_output,
-        audio_mode=audio_mode, audio_operations=audio_operations,
+        audio_mode=audio_mode, audio_profile=audio_profile,
+        audio_operations=audio_operations,
         adopted_audio=adopted_audio, loudness_mode=loudness_mode,
         loudnorm_measurement=loudnorm_measurement, visual_qc=visual_qc,
         source_has_audio=source_has_audio, video_duration=video_duration,
@@ -447,6 +474,11 @@ def main():
     ap.add_argument(
         "--audio-mode", choices=AUDIO_MODES,
         default="narration", help="audio path (default: narration)",
+    )
+    ap.add_argument(
+        "--audio-profile", choices=AUDIO_PROFILES,
+        default="voiceover-only",
+        help="narration mix policy (default: voiceover-only; source profiles retain movie audio)",
     )
     ap.add_argument(
         "--audio-stream-index", type=int, default=0,
@@ -525,6 +557,7 @@ def main():
         assemble_video(
             args.video, tts_segments, work_dir, output_path,
             audio_mode=args.audio_mode, audio_stream_index=args.audio_stream_index,
+            audio_profile=args.audio_profile,
             narration_adoption_path=args.narration_adoption, tts_meta_path=tts_meta,
             audio_mix_adoption_path=args.audio_mix_adoption,
         )
@@ -564,6 +597,7 @@ def main():
             final_output=final_output,
             settings_payload=assembly_settings.assembly_settings_payload,
             audio_mode=args.audio_mode,
+            audio_profile=args.audio_profile,
             audio_stream_index=args.audio_stream_index,
         )
         assembly_contract._write_assembly_manifest(work_dir, manifest)

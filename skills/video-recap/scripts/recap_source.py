@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 AUDIO_MODES = ("narration", "source-mix", "adopted-packet-copy")
+AUDIO_PROFILES = ("voiceover-only", "source-ducking", "legacy-ducking")
 
 _TTS_OPTIONS = frozenset({
     "--tts-provider",
@@ -48,6 +49,10 @@ def needs_voiceover(args):
 def audio_binding(args):
     binding = {
         "mode": args.audio_mode,
+        "profile": (
+            getattr(args, "audio_profile", "voiceover-only")
+            if args.audio_mode == "narration" else None
+        ),
         "selected_stream_index": args.audio_stream_index,
     }
     if uses_local_adoption(args):
@@ -74,6 +79,8 @@ def validate_local_adoption(parser, args):
         return
     if args.edit_mode != "full" or args.audio_mode != "narration":
         parser.error("local audio adoption requires --edit-mode full and --audio-mode narration")
+    if args.audio_profile == "voiceover-only":
+        parser.error("local audio adoption requires explicit --audio-profile source-ducking or legacy-ducking")
     if args.audio_stream_index != 0:
         parser.error("local audio adoption requires --audio-stream-index 0")
     if len(args.video) != 1:
@@ -199,6 +206,7 @@ def validate_audio_routing(parser, args):
     validate_local_adoption(parser, args)
     mode = args.audio_mode
     stream = args.audio_stream_index
+    profile = getattr(args, "audio_profile", "voiceover-only")
     if stream < 0:
         parser.error("--audio-stream-index must be a non-negative integer")
     if args.edit_mode == "dub" and mode != "narration":
@@ -211,6 +219,9 @@ def validate_audio_routing(parser, args):
         if stream != 0:
             parser.error("narration currently requires --audio-stream-index 0")
         return
+
+    if profile != "voiceover-only":
+        parser.error("--audio-profile is only meaningful with --audio-mode narration")
 
     conflicts = sorted(set(args._explicit_options).intersection(_TTS_OPTIONS))
     if conflicts:
@@ -229,9 +240,12 @@ def validate_audio_routing(parser, args):
 
 def extend_assemble_args(cli_args, args):
     mode = args.audio_mode
+    profile = getattr(args, "audio_profile", "voiceover-only")
     stream = args.audio_stream_index
     if mode != "narration":
         cli_args += ["--audio-mode", mode]
+    if profile != "voiceover-only":
+        cli_args += ["--audio-profile", profile]
     if stream != 0:
         cli_args += ["--audio-stream-index", str(stream)]
     return cli_args

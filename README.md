@@ -125,6 +125,24 @@ If you prefer cloud-only MiMo instead, use a MiMo key and the built-in defaults:
 
 Keep all real credentials in environment variables, not in project files.
 
+#### Optional BGM with voiceover-only
+
+To use a separate music track without including the movie's audio, set its path in the same PowerShell session before starting `agy` or OpenCode:
+
+```powershell
+$env:BGM_PATH = "D:\Audio\licensed-track.mp3"
+$env:BGM_VOLUME = "0.18"
+$env:BGM_DUCKING_VOLUME = "0.10"
+```
+
+`voiceover-only` is the default narration profile and excludes the movie audio. The configured BGM loops across the video at 18% and ducks to 10% under narration. To have the BGM play only outside narration, set `$env:BGM_DUCKING_VOLUME = "0"`. Use a track whose license covers your intended platform and use; the project does not verify music rights.
+
+For gap-only BGM, use this value instead of `0.10`:
+
+```powershell
+$env:BGM_DUCKING_VOLUME = "0"
+```
+
 ### 4. Start your agent
 
 From the repository folder, run one of:
@@ -162,6 +180,16 @@ Write and narrate in natural English, subtitle the narration in English, and
 keep important original dialogue with captions in its original language. Use
 Edge TTS voice en-US-AriaNeural. Burn in the narration subtitles and deliver
 the MP4 plus SRT so I can import them into CapCut.
+```
+
+For voiceover-only audio with the BGM configured above, ask:
+
+```text
+Use video-recap to make an English movie explainer from D:\Movies\Movie.mp4.
+Use the voiceover-only audio profile. Do not include any movie dialogue, music,
+ambience, or effects. Use the BGM_PATH track as background music, and set it to
+silence under narration so it only plays in the gaps. Do not add source-movie
+audio to fill those gaps.
 ```
 
 You can request another language, accent, or voice by name. Edge TTS is online synthesis and needs internet access. For other narration providers, see the provider options below.

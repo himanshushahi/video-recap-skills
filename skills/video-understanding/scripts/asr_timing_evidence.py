@@ -10,7 +10,7 @@ from lib import file_identity, load_background_research
 
 
 EVIDENCE_FILENAME = "asr_timing_evidence.json"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 VALID_STATUSES = {
     "AVAILABLE_COARSE",
     "AVAILABLE_WHISPER_LOCAL",
@@ -24,7 +24,7 @@ VALID_STATUSES = {
 }
 _TOP_KEYS = {
     "schema_version", "status", "source_video", "audio", "asr_result",
-    "glossary", "precision", "windows",
+    "audio_stream", "asr_language", "language_decisions", "glossary", "precision", "windows",
 }
 _WINDOW_KEYS = {
     "index", "start", "end", "text_availability", "observed_text",
@@ -109,7 +109,7 @@ def _window_evidence(observed_segments, final_segments, legacy):
 
 def write_asr_timing_evidence(
     work_dir, video_path, status, *, observed_segments=None, final_segments=None,
-    audio_path=None,
+    audio_path=None, audio_stream=None, asr_language=None, language_decisions=None,
 ):
     """Write a sidecar recording which source/audio/result files it describes, without
     changing the legacy result."""
@@ -123,6 +123,9 @@ def write_asr_timing_evidence(
         "source_video": _identity(video_path),
         "audio": _identity(audio_path) if audio_path else None,
         "asr_result": _identity(work_dir / "asr_result.json"),
+        "audio_stream": audio_stream,
+        "asr_language": asr_language,
+        "language_decisions": language_decisions or [],
         "glossary": _glossary_binding(work_dir, legacy=legacy),
         "precision": dict(_PRECISION),
         "windows": _window_evidence(observed_segments, final_segments, legacy),
@@ -145,6 +148,41 @@ def _is_identity(value):
         isinstance(value, dict) and set(value) == {"size", "mtime_ns"}
         and _is_int(value["size"]) and _is_int(value["mtime_ns"])
     )
+
+
+def _valid_audio_stream(value):
+    keys = {
+        "index", "language", "title", "codec", "channels", "channel_layout",
+        "default", "original", "commentary", "descriptive",
+    }
+    if not isinstance(value, dict) or set(value) != keys:
+        return False
+    return (
+        _is_int(value.get("index")) and value["index"] >= 0
+        and all(value.get(key) is None or isinstance(value[key], str) for key in (
+            "language", "title", "codec", "channel_layout"
+        ))
+        and (value.get("channels") is None or _is_int(value["channels"]))
+        and all(isinstance(value.get(key), bool) for key in (
+            "default", "original", "commentary", "descriptive"
+        ))
+    )
+
+
+def _valid_language_decisions(value):
+    if not isinstance(value, list):
+        return False
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"index", "start", "end", "language"}:
+            return False
+        if (
+            not _is_int(item["index"]) or item["index"] < 0
+            or not _is_number(item["start"]) or not _is_number(item["end"])
+            or item["end"] <= item["start"]
+            or not isinstance(item["language"], str) or not item["language"]
+        ):
+            return False
+    return True
 
 
 def _valid_glossary(payload, work_dir, legacy):
@@ -192,6 +230,12 @@ def validate_asr_timing_evidence(evidence_path, video_path, asr_result_path):
         return False
     if evidence.get("precision") != _PRECISION:
         return False
+    if evidence.get("audio_stream") is not None and not _valid_audio_stream(evidence["audio_stream"]):
+        return False
+    if evidence.get("asr_language") is not None and not isinstance(evidence["asr_language"], str):
+        return False
+    if not _valid_language_decisions(evidence.get("language_decisions")):
+        return False
     source_identity = _identity(video_path)
     result_identity = _identity(result_path)
     if not _is_identity(source_identity) or evidence.get("source_video") != source_identity:
@@ -220,6 +264,8 @@ def validate_asr_timing_evidence(evidence_path, video_path, asr_result_path):
         if not isinstance(audio_meta, dict):
             return False
         if audio_meta.get("source_video_identity") != source_identity:
+            return False
+        if evidence.get("audio_stream") is not None and audio_meta.get("audio_stream") != evidence["audio_stream"]:
             return False
 
     windows = evidence.get("windows")

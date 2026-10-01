@@ -139,6 +139,7 @@ def _run_local_adoption(video, work_dir, args):
         "--tts-meta", args.tts_meta,
         "--narration-adoption", args.narration_adoption,
         "--audio-mix-adoption", args.audio_mix_adoption,
+        "--audio-profile", args.audio_profile,
     ]
     if args.burn_subtitles is not None:
         assemble_args.append(

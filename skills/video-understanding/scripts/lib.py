@@ -139,6 +139,8 @@ CONFIG = {
     # ASR provider: auto | mimo-asr | whisper-local. auto prefers the local
     # faster-whisper model when WHISPER_MODEL_DIR exists, else MiMo ASR.
     "asr_provider": os.environ.get("ASR_PROVIDER", "auto").strip().lower(),
+    "asr_audio_stream_index": env_int("ASR_AUDIO_STREAM_INDEX", None, minimum=0),
+    "asr_language": os.environ.get("ASR_LANGUAGE", "auto").strip().lower(),
     "whisper_model_dir": os.environ.get("WHISPER_MODEL_DIR", DEFAULT_WHISPER_MODEL_DIR),
     "whisper_device": os.environ.get("WHISPER_DEVICE", "auto"),  # auto | cpu | cuda
     "whisper_compute_type": os.environ.get("WHISPER_COMPUTE_TYPE", ""),  # empty = faster-whisper default

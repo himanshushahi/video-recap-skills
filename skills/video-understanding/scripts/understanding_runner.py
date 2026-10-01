@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 from lib import CONFIG, log, get_video_duration, api_call
+from audio_tracks import probe_audio_streams
 
 from extract import extract_frames
 
@@ -80,6 +81,22 @@ def main():
         choices=["auto", "mimo-asr", "whisper-local"],
         help="ASR provider (default: local whisper when WHISPER_MODEL_DIR exists, else MiMo)",
     )
+    ap.add_argument(
+        "--asr-audio-stream-index",
+        type=int,
+        default=CONFIG["asr_audio_stream_index"],
+        help="global FFmpeg stream index for the dialogue audio track",
+    )
+    ap.add_argument(
+        "--asr-language",
+        default=os.environ.get("ASR_LANGUAGE", "auto"),
+        help="pin ASR language (for example hi or en); auto uses track metadata/provider detection",
+    )
+    ap.add_argument(
+        "--list-audio-tracks",
+        action="store_true",
+        help="print the source audio-track inventory as JSON and exit",
+    )
     ap.add_argument("--mimo-video-overview", action="store_true")
     ap.add_argument(
         "--force", action="store_true", help="ignore cached artifacts and recompute"
@@ -104,6 +121,11 @@ def main():
 
     video = args.video
     work_dir = Path(args.work_dir)
+    CONFIG["asr_audio_stream_index"] = args.asr_audio_stream_index
+    CONFIG["asr_language"] = args.asr_language.strip().lower()
+    if args.list_audio_tracks:
+        print(json.dumps({"video": str(Path(video).resolve()), "streams": probe_audio_streams(video)}, ensure_ascii=False, indent=2))
+        return
     work_dir.mkdir(parents=True, exist_ok=True)
     # Story research (if the agent wrote background_research.json first) feeds the VLM
     # context, so scene analysis can name characters and read scenes with plot knowledge.
@@ -189,7 +211,12 @@ def main():
             log(f"跳过 ASR（证据匹配，已存在 {len(asr_result)} 段）")
     else:
         try:
-            asr_result = transcribe_audio(video, work_dir)
+            asr_result = transcribe_audio(
+                video,
+                work_dir,
+                resume=not args.force,
+                cache_payload=asr_meta,
+            )
         except Exception as e:
             _remove_stage_meta(asr_json)
             asr_json.unlink(missing_ok=True)
